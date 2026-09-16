@@ -656,6 +656,51 @@ const ROUNDS = [
   { label: '準決勝',  matchCount: 2 },
   { label: '決勝',    matchCount: 1 },
 ];
+
+// 全15試合の通し番号・会場・開始時刻
+// インターバル：第8試合後・第12試合後・第14試合後に3分
+const MATCH_SCHEDULE = (() => {
+  const schedule = [];
+  // [ラウンドindex, 試合index, 会場('A'|'B'|'')]
+  const order = [
+    [0,0,'A'],[0,1,'B'],
+    [0,2,'A'],[0,3,'B'],
+    [0,4,'A'],[0,5,'B'],
+    [0,6,'A'],[0,7,'B'],
+    // インターバル3分
+    [1,0,'A'],[1,1,'B'],
+    [1,2,'A'],[1,3,'B'],
+    // インターバル3分
+    [2,0,'A'],[2,1,'B'],
+    // インターバル3分
+    [3,0,''],
+  ];
+  let minutes = 12 * 60 + 35; // 12:35
+  order.forEach((item, idx) => {
+    const [ri, mi, venue] = item;
+    const num = idx + 1;
+    const hh = String(Math.floor(minutes / 60)).padStart(2,'0');
+    const mm = String(minutes % 60).padStart(2,'0');
+    schedule.push({ ri, mi, num, venue, time: `${hh}:${mm}` });
+    // 次の試合の開始時刻を計算
+    // 同じ時間帯の2試合目（偶数インデックス→奇数）は+0分
+    // 次の時間帯へは+5分、インターバル後は+8分
+    const nextIdx = idx + 1;
+    if (nextIdx < order.length) {
+      const isInterval = (num === 8 || num === 12 || num === 14);
+      if (idx % 2 === 1) {
+        // 奇数インデックス（2試合目）→次の時間帯
+        minutes += isInterval ? 8 : 5;
+      }
+      // 偶数インデックス（1試合目）→同じ時間（+0）
+    }
+  });
+  return schedule;
+})();
+
+// ri,mi → スケジュール情報を引くマップ
+const SCHEDULE_MAP = {};
+MATCH_SCHEDULE.forEach(s => { SCHEDULE_MAP[`${s.ri}-${s.mi}`] = s; });
 const PTS         = [30,30,30, 20,20,20, 10,10,10];
 const CONE_COLORS = ['#90a4ae','#90a4ae','#90a4ae','#ffca28','#ffca28','#ffca28','#ef5350','#ef5350','#ef5350'];
 const BINGO_DEFS  = {
@@ -1137,11 +1182,20 @@ function renderBracket() {
       const totB  = m.teamB.members.reduce((s, x) => s + x.score, 0);
       const clsA  = !m.saved ? (m.teamA.name ? '' : 'tbd') : m.winner === 'a' ? 'winner' : '';
       const clsB  = !m.saved ? (m.teamB.name ? '' : 'tbd') : m.winner === 'b' ? 'winner' : '';
-      const matchLabel = `第${mi+1}試合`;
+      const sch   = SCHEDULE_MAP[`${ri}-${mi}`];
+      const venueColor = sch?.venue === 'A' ? 'var(--purple)' : sch?.venue === 'B' ? 'var(--red)' : 'var(--muted)';
+      const venueLabel = sch?.venue ? `会場${sch.venue}` : '';
+      const headerBg   = sch?.venue === 'A' ? 'var(--purple2)' : sch?.venue === 'B' ? '#fff0f0' : '#f9fafb';
       const div = document.createElement('div');
       div.className = 'bracket-match';
       div.innerHTML = `
-        <div style="font-size:0.6rem;color:var(--muted);padding:3px 8px;background:#f9fafb;border-bottom:1px solid var(--border);font-weight:700">${matchLabel}</div>
+        <div style="font-size:0.6rem;padding:3px 8px;background:${headerBg};border-bottom:1px solid var(--border);font-weight:700;display:flex;justify-content:space-between;align-items:center">
+          <span style="color:var(--muted)">第${sch?.num || mi+1}試合</span>
+          <span style="display:flex;gap:4px;align-items:center">
+            ${venueLabel ? `<span style="color:${venueColor};font-weight:700">${venueLabel}</span>` : ''}
+            ${sch?.time ? `<span style="color:var(--muted)">${sch.time}</span>` : ''}
+          </span>
+        </div>
         <div class="bracket-team ${clsA}">
           <span>${nameA}</span>
           ${m.saved ? `<span class="bracket-score">${totA}</span>` : ''}
@@ -1162,6 +1216,7 @@ function renderBracket() {
 // MVP
 // =====================================================
 function renderMVP() {
+  // MVP：同一人物の試合ごとの得点のうち最高値を使う
   const playerMap = {};
   appState.rounds.forEach(round => {
     round.matches.forEach(m => {
@@ -1171,15 +1226,15 @@ function renderMVP() {
         team.members.forEach(mb => {
           if (!mb.name.trim()) return;
           const key = mb.name + '__' + team.name;
-          if (!playerMap[key]) playerMap[key] = { name: mb.name, team: team.name, total: 0, games: 0 };
-          playerMap[key].total += mb.score;
+          if (!playerMap[key]) playerMap[key] = { name: mb.name, team: team.name, best: 0, games: 0 };
+          if (mb.score > playerMap[key].best) playerMap[key].best = mb.score;
           playerMap[key].games++;
         });
       });
     });
   });
 
-  const ranking = Object.values(playerMap).sort((a, b) => b.total - a.total);
+  const ranking = Object.values(playerMap).sort((a, b) => b.best - a.best);
 
   // 表彰台（2位・1位・3位の順で表示）
   const podium = document.getElementById('mvp-podium');
@@ -1194,7 +1249,7 @@ function renderMVP() {
         ${p
           ? `<div class="podium-name">${p.name}</div>
              <div class="podium-team">${p.team||'—'}</div>
-             <div class="podium-score">${p.total}<span class="podium-unit">点</span></div>`
+             <div class="podium-score">${p.best}<span class="podium-unit">点</span></div>`
           : `<div class="podium-name" style="color:#ddd">—</div>`
         }
       </div>
@@ -1219,8 +1274,8 @@ function renderMVP() {
         <div class="mvp-team">${p.team||'—'}</div>
       </div>
       <div class="mvp-score-col">
-        <div class="mvp-score">${p.total}点</div>
-        <div class="mvp-games">${p.games}試合</div>
+        <div class="mvp-score">${p.best}点</div>
+        <div class="mvp-games">${p.games}試合出場</div>
       </div>
     `;
     list.appendChild(row);
