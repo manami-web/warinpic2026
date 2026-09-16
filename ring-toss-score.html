@@ -297,10 +297,13 @@ body {
   padding: 7px 10px; font-size: 0.82rem; outline: none;
   color: var(--text); width: 100%; font-weight: 400;
   background: white;
-  pointer-events: none; /* 行全体でタップ受付、入力は直接タップで解除 */
+}
+/* 試合入力フォーム内のメンバー行：行全体でタップ受付 */
+.member-row .member-name-input {
+  pointer-events: none;
 }
 .member-row.selected .member-name-input {
-  pointer-events: auto; /* 選択中は入力も可能 */
+  pointer-events: auto;
   border-color: var(--purple);
 }
 .member-name-input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
@@ -544,7 +547,12 @@ body {
     <div class="team-block" id="team-a-block">
       <div class="team-name-row">
         <span class="team-badge">チームA</span>
-        <input class="team-name-input" id="team-a-name" type="text" placeholder="チーム名を入力">
+        <select class="team-name-input" id="team-a-select" onchange="onTeamSelect('a',this.value)" style="flex:1;padding:6px 10px">
+          <option value="">— 手動入力 —</option>
+        </select>
+      </div>
+      <div id="team-a-manual" style="margin-bottom:6px">
+        <input class="team-name-input" id="team-a-name" type="text" placeholder="チーム名を入力" style="width:100%">
       </div>
       <div id="members-a"></div>
       <button class="cone-panel-toggle" onclick="toggleConePanel('a')">コーン入力で計算する</button>
@@ -566,7 +574,12 @@ body {
     <div class="team-block b-block" id="team-b-block">
       <div class="team-name-row">
         <span class="team-badge b">チームB</span>
-        <input class="team-name-input" id="team-b-name" type="text" placeholder="チーム名を入力">
+        <select class="team-name-input" id="team-b-select" onchange="onTeamSelect('b',this.value)" style="flex:1;padding:6px 10px">
+          <option value="">— 手動入力 —</option>
+        </select>
+      </div>
+      <div id="team-b-manual" style="margin-bottom:6px">
+        <input class="team-name-input" id="team-b-name" type="text" placeholder="チーム名を入力" style="width:100%">
       </div>
       <div id="members-b"></div>
       <button class="cone-panel-toggle" onclick="toggleConePanel('b')">コーン入力で計算する</button>
@@ -606,15 +619,10 @@ body {
 <!-- ========== 設定タブ ========== -->
 <div class="tab-content" id="tab-settings">
   <div class="section-title">チーム事前設定</div>
-  <p style="font-size:0.78rem;color:var(--muted);margin-bottom:12px">チーム名・メンバー名を入力後、試合割り当てをしてください。自動で保存されます。</p>
+  <p style="font-size:0.78rem;color:var(--muted);margin-bottom:12px">チーム名・メンバー名を登録しておくと、試合入力時に選択できます。自動で保存されます。</p>
 
   <!-- 16チーム入力 -->
   <div id="teams-setup"></div>
-
-  <!-- 試合割り当て -->
-  <div class="section-title" style="margin-top:20px">試合へのチーム割り当て</div>
-  <p style="font-size:0.78rem;color:var(--muted);margin-bottom:10px">各試合に出場するチームを選択してください</p>
-  <div id="match-assign"></div>
 
   <!-- データリセット -->
   <div class="section-title" style="margin-top:28px;color:var(--red)">データ管理</div>
@@ -790,17 +798,30 @@ function renderMatchForm() {
   const match = appState.rounds[ri].matches[mi];
   const label = `${appState.rounds[ri].label} 第${mi+1}試合`;
 
-  // タイトルと保存状態を同時に表示
   const titleEl = document.getElementById('form-title');
   titleEl.textContent = match.saved ? `${label} ✓ 記録済み` : label;
   titleEl.className = 'match-title' + (match.saved ? ' is-saved' : '');
 
-  // 記録ボタンも状態に合わせて変える
   const saveBtn = document.querySelector('#match-form .btn-primary');
   if (saveBtn) {
     saveBtn.textContent = match.saved ? '上書き保存する' : 'この試合を記録する';
     saveBtn.className = 'btn-primary' + (match.saved ? ' is-edit' : '');
   }
+
+  // チーム選択ドロップダウンを更新
+  updateTeamSelects();
+
+  // 選択状態を反映
+  ['a','b'].forEach(t => {
+    const sel = document.getElementById(`team-${t}-select`);
+    const match = currentMatch();
+    const assignKey = t === 'a' ? 'assignA' : 'assignB';
+    const tidx = match[assignKey] ?? -1;
+    if (sel) sel.value = tidx >= 0 ? String(tidx) : '';
+    // 手動入力欄の表示切替
+    const manual = document.getElementById(`team-${t}-manual`);
+    if (manual) manual.style.display = tidx >= 0 ? 'none' : '';
+  });
 
   document.getElementById('team-a-name').value = match.teamA.name;
   document.getElementById('team-b-name').value = match.teamB.name;
@@ -808,6 +829,45 @@ function renderMatchForm() {
   renderMembers('b', match.teamB.members);
   buildConePanel('a'); buildConePanel('b');
   updateResult();
+}
+
+// チーム選択ドロップダウンのオプションを最新状態に更新
+function updateTeamSelects() {
+  const options = `<option value="">— 手動入力 —</option>` +
+    appState.teams.map((t, i) =>
+      t.name ? `<option value="${i}">${esc(t.name)}</option>` : ''
+    ).join('');
+  ['a','b'].forEach(t => {
+    const sel = document.getElementById(`team-${t}-select`);
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = options;
+    sel.value = cur;
+  });
+}
+
+// ドロップダウンでチームを選択したとき
+function onTeamSelect(team, val) {
+  const match = currentMatch();
+  const teamKey = team === 'a' ? 'teamA' : 'teamB';
+  const assignKey = team === 'a' ? 'assignA' : 'assignB';
+  const manual = document.getElementById(`team-${team}-manual`);
+
+  if (val === '') {
+    // 手動入力モード
+    match[assignKey] = -1;
+    if (manual) manual.style.display = '';
+  } else {
+    const tidx = parseInt(val);
+    match[assignKey] = tidx;
+    const src = appState.teams[tidx];
+    match[teamKey].name = src.name;
+    match[teamKey].members = src.members.map(n => ({ name: n, score: 0 }));
+    if (manual) manual.style.display = 'none';
+    document.getElementById(`team-${team}-name`).value = src.name;
+    renderMembers(team, match[teamKey].members);
+    updateResult();
+  }
 }
 
 function renderMembers(team, members) {
@@ -1014,9 +1074,11 @@ function updateResult() {
 // 保存（記録済みでも上書き可能）
 // =====================================================
 function saveMatch() {
+  const ri = appState.currentRound, mi = appState.currentMatch;
   const match = currentMatch();
-  match.teamA.name = document.getElementById('team-a-name').value.trim() || 'チームA';
-  match.teamB.name = document.getElementById('team-b-name').value.trim() || 'チームB';
+  // 手動入力の場合のみinputから名前を取得
+  if ((match.assignA ?? -1) < 0) match.teamA.name = document.getElementById('team-a-name').value.trim() || 'チームA';
+  if ((match.assignB ?? -1) < 0) match.teamB.name = document.getElementById('team-b-name').value.trim() || 'チームB';
   const totA = match.teamA.members.reduce((s, m) => s + m.score, 0);
   const totB = match.teamB.members.reduce((s, m) => s + m.score, 0);
   match.winner = totA > totB ? 'a' : totB > totA ? 'b' : 'draw';
@@ -1024,12 +1086,36 @@ function saveMatch() {
   match.saved = true;
   saveStorage();
   buildMatchSelector();
-  // フォームのタイトル・ボタンを即更新（alertより前）
   renderMatchForm();
+  // 勝者を次のラウンドに自動繰り上げ
+  propagateWinner(ri, mi, match);
+
   alert(wasEdited
     ? `上書き保存しました\n${match.teamA.name} ${totA}点 vs ${match.teamB.name} ${totB}点`
     : `記録しました\n${match.teamA.name} ${totA}点 vs ${match.teamB.name} ${totB}点`
   );
+}
+
+// 勝者を次ラウンドの対応試合に繰り上げる
+function propagateWinner(ri, mi, match) {
+  const nextRi = ri + 1;
+  if (nextRi >= appState.rounds.length) return; // 決勝の次はない
+  const nextMi = Math.floor(mi / 2);
+  const nextSide = mi % 2 === 0 ? 'a' : 'b'; // 偶数試合→A枠、奇数試合→B枠
+  const nextMatch = appState.rounds[nextRi].matches[nextMi];
+  if (!nextMatch) return;
+  if (match.winner === 'draw') return; // 引き分けは繰り上げなし
+
+  const winnerTeam = match.winner === 'a' ? match.teamA : match.teamB;
+  const teamKey = nextSide === 'a' ? 'teamA' : 'teamB';
+  const assignKey = nextSide === 'a' ? 'assignA' : 'assignB';
+
+  // すでに記録済みの試合は上書きしない
+  if (nextMatch.saved) return;
+
+  nextMatch[teamKey].name = winnerTeam.name;
+  nextMatch[teamKey].members = winnerTeam.members.map(m => ({ name: m.name, score: 0 }));
+  nextMatch[assignKey] = -1; // 手動割り当てではなく繰り上げ
 }
 
 // =====================================================
@@ -1038,22 +1124,24 @@ function saveMatch() {
 function renderBracket() {
   const bracket = document.getElementById('bracket');
   bracket.innerHTML = '';
-  appState.rounds.forEach(round => {
+  appState.rounds.forEach((round, ri) => {
     const col = document.createElement('div');
     col.className = 'bracket-round';
     col.innerHTML = `<div class="bracket-round-label">${round.label}</div>`;
     const slots = document.createElement('div');
     slots.className = 'bracket-slots';
-    round.matches.forEach(m => {
-      const nameA = m.teamA.name || '未定';
-      const nameB = m.teamB.name || '未定';
+    round.matches.forEach((m, mi) => {
+      const nameA = m.teamA.name || '?';
+      const nameB = m.teamB.name || '?';
       const totA  = m.teamA.members.reduce((s, x) => s + x.score, 0);
       const totB  = m.teamB.members.reduce((s, x) => s + x.score, 0);
-      const clsA  = !m.saved ? 'tbd' : m.winner === 'a' ? 'winner' : '';
-      const clsB  = !m.saved ? 'tbd' : m.winner === 'b' ? 'winner' : '';
+      const clsA  = !m.saved ? (m.teamA.name ? '' : 'tbd') : m.winner === 'a' ? 'winner' : '';
+      const clsB  = !m.saved ? (m.teamB.name ? '' : 'tbd') : m.winner === 'b' ? 'winner' : '';
+      const matchLabel = `第${mi+1}試合`;
       const div = document.createElement('div');
       div.className = 'bracket-match';
       div.innerHTML = `
+        <div style="font-size:0.6rem;color:var(--muted);padding:3px 8px;background:#f9fafb;border-bottom:1px solid var(--border);font-weight:700">${matchLabel}</div>
         <div class="bracket-team ${clsA}">
           <span>${nameA}</span>
           ${m.saved ? `<span class="bracket-score">${totA}</span>` : ''}
@@ -1144,7 +1232,6 @@ function renderMVP() {
 // =====================================================
 function renderSettings() {
   renderTeamsSetup();
-  renderMatchAssign();
 }
 
 function renderTeamsSetup() {
@@ -1195,76 +1282,6 @@ function updateTeamMember(ti, mi, val) {
   saveStorage();
 }
 
-// 試合割り当て描画
-function renderMatchAssign() {
-  const container = document.getElementById('match-assign');
-  container.innerHTML = '';
-
-  const teamOptions = appState.teams.map((t, i) =>
-    `<option value="${i}">${t.name || `チーム${i+1}`}</option>`
-  ).join('');
-  const noSelect = `<option value="-1">— 未割当 —</option>`;
-
-  appState.rounds.forEach((round, ri) => {
-    const sec = document.createElement('div');
-    sec.style.marginBottom = '14px';
-    sec.innerHTML = `<div class="section-title" style="margin-top:0;font-size:0.8rem">${round.label}</div>`;
-    round.matches.forEach((m, mi) => {
-      const card = document.createElement('div');
-      card.className = 'match-card';
-      card.style.marginBottom = '8px';
-      card.innerHTML = `
-        <div style="font-size:0.78rem;font-weight:900;color:var(--text);margin-bottom:8px">第${mi+1}試合</div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <div style="flex:1">
-            <div style="font-size:0.65rem;color:var(--muted);font-weight:700;margin-bottom:3px">チームA</div>
-            <select class="team-name-input" style="width:100%;padding:6px 10px"
-              onchange="assignTeam(${ri},${mi},'a',this.value)">
-              ${noSelect}${teamOptions}
-            </select>
-          </div>
-          <div style="font-size:0.85rem;color:var(--pink2);font-weight:900">VS</div>
-          <div style="flex:1">
-            <div style="font-size:0.65rem;color:var(--muted);font-weight:700;margin-bottom:3px">チームB</div>
-            <select class="team-name-input" style="width:100%;padding:6px 10px"
-              onchange="assignTeam(${ri},${mi},'b',this.value)">
-              ${noSelect}${teamOptions}
-            </select>
-          </div>
-        </div>
-      `;
-      // 現在の割り当てを反映
-      const selA = card.querySelectorAll('select')[0];
-      const selB = card.querySelectorAll('select')[1];
-      selA.value = m.assignA;
-      selB.value = m.assignB;
-      sec.appendChild(card);
-    });
-    container.appendChild(sec);
-  });
-}
-
-function assignTeam(ri, mi, side, tidxStr) {
-  const match = appState.rounds[ri].matches[mi];
-  const tidx = parseInt(tidxStr);
-  const teamKey = side === 'a' ? 'teamA' : 'teamB';
-  const assignKey = side === 'a' ? 'assignA' : 'assignB';
-  match[assignKey] = tidx;
-
-  if (tidx >= 0) {
-    const src = appState.teams[tidx];
-    match[teamKey].name = src.name;
-    match[teamKey].members = src.members.map(n => ({ name: n, score: 0 }));
-  } else {
-    match[teamKey].name = '';
-    match[teamKey].members = [{name:'',score:0},{name:'',score:0},{name:'',score:0}];
-  }
-  saveStorage();
-  // 現在フォームを再描画
-  if (ri === appState.currentRound && mi === appState.currentMatch) {
-    renderMatchForm();
-  }
-}
 
 // =====================================================
 // リセット
