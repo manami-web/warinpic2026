@@ -1,0 +1,1316 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>輪リンピック 2026</title>
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+  import { getDatabase, ref, set, onValue, remove } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+  import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js';
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAvxSLB-R_u2ZoJ4JLjLdko_z8Uo0vhGy8",
+    authDomain: "warinpic2026.firebaseapp.com",
+    databaseURL: "https://warinpic2026-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "warinpic2026",
+    storageBucket: "warinpic2026.firebasestorage.app",
+    messagingSenderId: "1058236907026",
+    appId: "1:1058236907026:web:94755b4e912e90512422cb"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getDatabase(app);
+  const auth = getAuth(app);
+
+  // 匿名サインイン後にリアルタイム購読開始
+  signInAnonymously(auth).catch(e => console.warn('auth error', e));
+
+  onAuthStateChanged(auth, user => {
+    if (!user) return;
+
+    // ─── 接続状態インジケーター ───
+    const connRef = ref(db, '.info/connected');
+    onValue(connRef, snap => {
+      const online = snap.val() === true;
+      const bar = document.getElementById('sync-bar');
+      if (bar) {
+        bar.textContent = online ? '● オンライン同期中' : '○ オフライン（接続待ち）';
+        bar.className = 'sync-bar ' + (online ? 'online' : 'offline');
+      }
+    });
+
+    // ─── リアルタイム購読 ───
+    const dataRef = ref(db, 'warinpic2026');
+    onValue(dataRef, snap => {
+      const remote = snap.val();
+      if (!remote) return;
+      // 自分が書き込み中の場合は無視（フラグで制御）
+      if (window._fbWriting) return;
+      try {
+        if (remote.teams) window.appState.teams = remote.teams;
+        if (remote.rounds) window.appState.rounds = remote.rounds;
+        // 不足フィールドを補完
+        window.appState.rounds.forEach(round => round.matches.forEach(m => {
+          if (m.assignA === undefined) m.assignA = -1;
+          if (m.assignB === undefined) m.assignB = -1;
+        }));
+        window._onRemoteUpdate && window._onRemoteUpdate();
+      } catch(e) { console.warn('remote update error', e); }
+    });
+
+    // saveStorage をFirebase書き込みにバインド
+    window._fbSave = () => {
+      window._fbWriting = true;
+      set(ref(db, 'warinpic2026'), {
+        teams: window.appState.teams,
+        rounds: window.appState.rounds,
+      }).then(() => {
+        window._fbWriting = false;
+      }).catch(e => {
+        window._fbWriting = false;
+        console.warn('save error', e);
+      });
+    };
+
+    // リセット
+    window._fbReset = () => {
+      remove(ref(db, 'warinpic2026')).catch(e => console.warn('reset error', e));
+    };
+  });
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap');
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* アクセント（輪リンピックのテーマ色として維持） */
+  --pink:    #e8478a;
+  --pink2:   #f9b8d4;
+  --purple:  #7c3aed;
+  --purple2: #ede9fe;
+  --mint:    #059669;
+  --mint2:   #d1fae5;
+  --yellow:  #d97706;
+  --yellow2: #fef3c7;
+  --blue:    #2563eb;
+  --blue2:   #dbeafe;
+  --red:     #dc2626;
+  /* 実用UI向けに中性化 */
+  --bg:      #f3f4f6;
+  --card:    #ffffff;
+  --text:    #111827;
+  --text2:   #374151;
+  --muted:   #6b7280;
+  --border:  #e5e7eb;
+  --input-border: #d1d5db;
+  --radius:  12px;
+}
+
+body {
+  font-family: 'Noto Sans JP', -apple-system, sans-serif;
+  background: var(--bg);
+  min-height: 100vh;
+  padding-bottom: 48px;
+}
+
+/* ===== 同期インジケーター ===== */
+.sync-bar {
+  text-align: center;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  letter-spacing: 0.03em;
+}
+.sync-bar.online  { background: #d1fae5; color: #065f46; }
+.sync-bar.offline { background: #fef3c7; color: #92400e; }
+
+/* ===== リセットボタン ===== */
+.btn-reset {
+  width: 100%; margin-top: 24px;
+  background: white;
+  color: var(--red); border: 1.5px solid #fca5a5; border-radius: 6px;
+  padding: 11px; font-size: 0.85rem; font-weight: 700;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: 0.12s;
+}
+.btn-reset:active { background: #fee2e2; }
+
+/* ===== ヘッダー ===== */
+.app-header {
+  background: #1e293b;
+  color: white;
+  text-align: center;
+  padding: 10px 16px 8px;
+}
+.app-header h1 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.app-header p { font-size: 0.68rem; opacity: 0.6; margin-top: 2px; }
+
+/* ===== タブ ===== */
+.tab-bar {
+  display: flex;
+  background: white;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.tab-btn {
+  flex: 1;
+  min-width: 64px;
+  padding: 10px 4px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: 0.15s;
+  white-space: nowrap;
+}
+.tab-btn.active { color: var(--pink); border-bottom-color: var(--pink); font-weight: 700; }
+
+/* ===== タブコンテンツ ===== */
+.tab-content { display: none; padding: 16px; max-width: 560px; margin: 0 auto; }
+.tab-content.active { display: block; }
+
+/* ===== セクションタイトル ===== */
+.section-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 16px 0 6px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ===== 試合セレクター ===== */
+.match-selector { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 14px; }
+.round-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 90px; }
+.round-label {
+  font-size: 0.65rem; color: var(--muted); font-weight: 600;
+  background: var(--border); border-radius: 4px;
+  padding: 2px 6px; display: inline-block;
+}
+.round-btns { display: flex; gap: 4px; flex-wrap: wrap; }
+.match-btn {
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: white;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text2);
+  cursor: pointer;
+  transition: 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.match-btn:active { background: #f9fafb; }
+.match-btn.active   { background: var(--pink); border-color: var(--pink); color: white; font-weight: 700; }
+.match-btn.done     { background: var(--mint2); border-color: var(--mint); color: #065f46; }
+.match-btn.done.active { background: var(--mint); border-color: var(--mint); color: white; }
+
+/* ===== 試合カード ===== */
+.match-card {
+  background: white;
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  border: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.match-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.match-title {
+  font-size: 0.9rem; font-weight: 700; color: var(--text);
+}
+/* 記録済みフォームの状態表示 */
+.match-title.is-saved { color: var(--mint); }
+
+/* ===== チームブロック ===== */
+.team-block {
+  background: #f8f9ff;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-left: 3px solid var(--purple);
+  border-top: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.team-block.b-block {
+  background: #fff8f8;
+  border-left-color: var(--red);
+}
+.team-name-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.team-badge {
+  background: var(--purple);
+  color: white;
+  font-size: 0.68rem; font-weight: 700;
+  padding: 3px 8px; border-radius: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.team-badge.b { background: var(--red); }
+.team-name-input {
+  flex: 1; border: 1px solid var(--input-border);
+  border-radius: 6px; padding: 6px 10px;
+  font-size: 0.88rem; color: var(--text); outline: none;
+  font-weight: 600; background: white;
+}
+.team-name-input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+
+/* ===== メンバー行 ===== */
+.member-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px; align-items: center; margin-bottom: 5px;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 2px;
+  transition: background 0.1s;
+}
+.member-row.selected {
+  background: var(--purple2);
+  outline: 2px solid var(--purple);
+  outline-offset: -2px;
+}
+.member-name-input {
+  border: 1px solid var(--input-border); border-radius: 6px;
+  padding: 7px 10px; font-size: 0.82rem; outline: none;
+  color: var(--text); width: 100%; font-weight: 400;
+  background: white;
+  pointer-events: none; /* 行全体でタップ受付、入力は直接タップで解除 */
+}
+.member-row.selected .member-name-input {
+  pointer-events: auto; /* 選択中は入力も可能 */
+  border-color: var(--purple);
+}
+.member-name-input:focus { border-color: var(--blue); box-shadow: 0 0 0 2px rgba(37,99,235,0.15); }
+/* コーンパネル内の選択中メンバー表示 */
+.cone-target-label {
+  font-size: 0.75rem; font-weight: 700; color: var(--purple);
+  background: var(--purple2); border-radius: 6px;
+  padding: 5px 10px; margin-bottom: 8px; text-align: center;
+  border: 1px solid #c4b5fd;
+}
+.member-score-ctrl { display: flex; align-items: center; gap: 5px; }
+.score-btn {
+  width: 32px; height: 32px; border-radius: 6px;
+  border: 1px solid var(--input-border); background: white;
+  font-size: 1rem; font-weight: 700;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: var(--muted); padding: 0;
+  -webkit-tap-highlight-color: transparent; transition: 0.1s;
+}
+.score-btn:active { background: #fee2e2; color: var(--red); border-color: #fca5a5; }
+.score-val {
+  min-width: 40px; text-align: center;
+  font-size: 1rem; font-weight: 600; color: var(--muted);
+  background: #f9fafb; border-radius: 6px; padding: 4px 2px;
+  border: 1px solid var(--border);
+}
+.score-val.nonzero { color: var(--purple); background: var(--purple2); font-weight: 700; border-color: #c4b5fd; }
+
+/* ===== コーンパネルトグル ===== */
+.cone-panel-toggle {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%;
+  font-size: 0.8rem; color: var(--purple); background: var(--purple2);
+  border: 1px solid #c4b5fd; cursor: pointer;
+  padding: 10px 12px;
+  border-radius: 6px; font-weight: 600; margin-top: 8px;
+  transition: 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.cone-panel-toggle:active { background: var(--purple); color: white; border-color: var(--purple); }
+
+/* ===== コーンパネル ===== */
+.cone-panel {
+  display: none; background: #f9fafb; border-radius: 8px;
+  padding: 12px; margin-top: 8px; margin-bottom: 4px;
+  border: 1px solid var(--border);
+}
+.cone-panel.open { display: block; }
+.cone-grid-mini {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; max-width: 300px; margin: 4px auto;
+}
+.cone-row-label {
+  font-size: 0.62rem; color: var(--muted); text-align: center;
+  margin: 6px 0 2px; font-weight: 700; letter-spacing: 0.05em;
+}
+
+/* ===== コーンセル ===== */
+.cone-cell {
+  display: flex; flex-direction: column; align-items: center;
+  background: white; border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 4px 6px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.12s, background 0.12s;
+  user-select: none;
+  position: relative;
+}
+.cone-cell:active { opacity: 0.8; }
+.cone-cell.hit  { border-color: var(--blue); background: var(--blue2); }
+.cone-cell.hit2 { border-color: var(--purple); background: var(--purple2); box-shadow: 0 0 0 2px #c4b5fd; }
+.cone-cell svg  { width: 36px; height: 36px; pointer-events: none; }
+.cone-pts-mini  { font-size: 0.65rem; color: var(--muted); font-weight: 700; pointer-events: none; }
+.cone-cnt-badge {
+  position: absolute; top: 4px; right: 5px;
+  background: var(--pink); color: white;
+  font-size: 0.65rem; font-weight: 900;
+  width: 18px; height: 18px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  display: none;
+}
+.cone-cell.hit  .cone-cnt-badge { display: flex; background: var(--blue); }
+.cone-cell.hit2 .cone-cnt-badge { display: flex; background: var(--purple); }
+.cone-minus-row { display: flex; justify-content: center; margin-top: 4px; }
+.cnt-mini {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 1.5px solid #fca5a5; background: white;
+  font-size: 0.85rem; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--red); padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.cnt-mini:active { background: #fee2e2; transform: scale(0.88); }
+
+/* ===== ビンゴチップ ===== */
+.bingo-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.bingo-chip {
+  background: white; border: 1px solid #c4b5fd;
+  border-radius: 6px; padding: 4px 10px;
+  font-size: 0.72rem; font-weight: 600; color: var(--purple);
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: 0.12s;
+}
+.bingo-chip:active { background: #f5f3ff; }
+.bingo-chip.active { background: var(--purple); color: white; border-color: var(--purple); }
+.bingo-note { font-size: 0.62rem; color: var(--muted); margin-top: 4px; }
+.apply-cone-btn {
+  display: block; width: 100%; margin-top: 10px;
+  background: var(--purple);
+  color: white; border: none; border-radius: 6px;
+  padding: 11px; font-size: 0.85rem; font-weight: 600;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: 0.12s;
+}
+.apply-cone-btn:active { opacity: 0.85; }
+
+/* ===== 勝敗表示 ===== */
+.match-result { display: flex; gap: 8px; align-items: stretch; margin-top: 12px; }
+.team-total-box {
+  flex: 1; border-radius: 8px; padding: 10px 8px;
+  text-align: center; background: #f9fafb;
+  border: 1px solid var(--border); transition: 0.2s;
+}
+.team-total-box.winner { background: var(--mint2); border-color: var(--mint); }
+.team-total-box.loser  { opacity: 0.5; }
+.team-total-label { font-size: 0.68rem; color: var(--muted); font-weight: 600; }
+.team-total-val   { font-size: 1.6rem; font-weight: 700; color: var(--text); }
+.team-total-box.winner .team-total-val { color: var(--mint); }
+.win-badge  { display: inline-block; background: var(--mint); color: white; font-size: 0.65rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; margin-top: 3px; }
+.draw-badge { display: inline-block; background: var(--yellow); color: white; font-size: 0.65rem; font-weight: 600; padding: 2px 8px; border-radius: 4px; margin-top: 3px; }
+.vs-sep { display: flex; align-items: center; font-size: 0.85rem; color: var(--muted); font-weight: 600; padding: 0 2px; }
+
+/* ===== 記録ボタン ===== */
+.btn-primary {
+  width: 100%; margin-top: 12px;
+  background: var(--pink);
+  color: white; border: none; border-radius: 6px;
+  padding: 13px; font-size: 0.9rem; font-weight: 700;
+  cursor: pointer; -webkit-tap-highlight-color: transparent;
+  transition: 0.12s;
+}
+.btn-primary:active { opacity: 0.88; }
+/* 上書き保存モード */
+.btn-primary.is-edit { background: var(--mint); }
+
+/* ===== トーナメント ===== */
+.bracket-wrap { overflow-x: auto; }
+.bracket { display: flex; min-width: 500px; padding: 8px 0 16px; }
+.bracket-round { display: flex; flex-direction: column; flex: 1; }
+.bracket-round-label {
+  text-align: center; font-size: 0.68rem; font-weight: 700;
+  color: var(--muted); padding: 4px 0 8px;
+  letter-spacing: 0.06em; text-transform: uppercase;
+}
+.bracket-slots { display: flex; flex-direction: column; justify-content: space-around; flex: 1; gap: 4px; }
+.bracket-match {
+  display: flex; flex-direction: column; margin: 2px 4px;
+  border-radius: 6px; overflow: hidden;
+  border: 1px solid var(--border); background: white;
+}
+.bracket-team {
+  padding: 5px 8px; font-size: 0.7rem; font-weight: 600; color: var(--text2);
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+.bracket-team:last-child { border-bottom: none; }
+.bracket-team.winner { background: var(--mint2); color: #065f46; font-weight: 700; }
+.bracket-team.tbd    { color: #9ca3af; font-style: italic; }
+.bracket-score { font-weight: 700; }
+
+/* ===== MVP ===== */
+.mvp-podium {
+  display: flex; gap: 8px; align-items: flex-end;
+  justify-content: center; margin: 12px 0;
+}
+.podium-slot { flex: 1; max-width: 140px; text-align: center; }
+.podium-rank { font-size: 0.75rem; font-weight: 700; color: var(--muted); margin-bottom: 4px; letter-spacing: 0.04em; }
+.podium-card {
+  border-radius: 8px; padding: 12px 8px;
+  background: white; border: 1px solid var(--border);
+}
+.podium-slot.rank1 .podium-card { border-color: #d97706; background: var(--yellow2); }
+.podium-slot.rank2 .podium-card { border-color: #9ca3af; background: #f9fafb; }
+.podium-slot.rank3 .podium-card { border-color: #b45309; background: #fff7ed; }
+.podium-name  { font-size: 0.82rem; font-weight: 700; color: var(--text); margin-bottom: 1px; }
+.podium-team  { font-size: 0.65rem; color: var(--muted); margin-bottom: 4px; }
+.podium-score { font-size: 1.4rem; font-weight: 700; color: var(--text); }
+.podium-slot.rank1 .podium-score { font-size: 1.7rem; font-weight: 900; color: var(--yellow); }
+.podium-unit  { font-size: 0.72rem; font-weight: 400; }
+
+.mvp-list { background: white; border-radius: 8px; padding: 4px 0; border: 1px solid var(--border); }
+.mvp-row {
+  display: flex; align-items: center; padding: 10px 14px;
+  border-bottom: 1px solid var(--border); gap: 10px;
+}
+.mvp-row:last-child { border-bottom: none; }
+.mvp-rank-badge {
+  width: 26px; height: 26px; border-radius: 50%;
+  background: #f3f4f6; display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; font-weight: 700; color: var(--muted); flex-shrink: 0;
+}
+.mvp-rank-badge.r1 { background: var(--yellow2); color: var(--yellow); }
+.mvp-rank-badge.r2 { background: #f1f5f9; color: #475569; }
+.mvp-rank-badge.r3 { background: #fff7ed; color: #b45309; }
+.mvp-info { flex: 1; }
+.mvp-name { font-size: 0.88rem; font-weight: 700; color: var(--text); }
+.mvp-team { font-size: 0.7rem; color: var(--muted); }
+.mvp-score-col { text-align: right; }
+.mvp-score { font-size: 1.05rem; font-weight: 700; color: var(--text); }
+.mvp-games { font-size: 0.65rem; color: #9ca3af; }
+.empty-msg { color: #9ca3af; font-size: 0.82rem; text-align: center; padding: 24px; }
+</style>
+</head>
+<body>
+
+<div id="sync-bar" class="sync-bar offline">○ 接続中...</div>
+<div class="app-header">
+  <h1>輪リンピック 2026</h1>
+  <p>得点管理 ／ 16チームトーナメント</p>
+</div>
+
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showTab('tab-match')">試合入力</button>
+  <button class="tab-btn" onclick="showTab('tab-bracket')">トーナメント</button>
+  <button class="tab-btn" onclick="showTab('tab-mvp')">MVP</button>
+  <button class="tab-btn" onclick="showTab('tab-settings')">設定</button>
+</div>
+
+<!-- ========== 試合入力タブ ========== -->
+<div class="tab-content active" id="tab-match">
+
+  <div class="section-title">ラウンド・試合を選択</div>
+  <div class="match-selector" id="match-selector"></div>
+
+  <div class="match-card" id="match-form">
+    <div class="match-header">
+      <span class="match-title" id="form-title">1回戦 第1試合</span>
+    </div>
+
+    <!-- チームA -->
+    <div class="team-block" id="team-a-block">
+      <div class="team-name-row">
+        <span class="team-badge">チームA</span>
+        <input class="team-name-input" id="team-a-name" type="text" placeholder="チーム名を入力">
+      </div>
+      <div id="members-a"></div>
+      <button class="cone-panel-toggle" onclick="toggleConePanel('a')">コーン入力で計算する</button>
+      <div class="cone-panel" id="cone-panel-a">
+        <div class="cone-target-label" id="cone-target-label-a">入力対象：メンバー1</div>
+        <div class="cone-row-label">奥（30点）— タップで＋1</div>
+        <div class="cone-grid-mini" id="cones-a-back"></div>
+        <div class="cone-row-label" style="margin-top:8px">真ん中（20点）</div>
+        <div class="cone-grid-mini" id="cones-a-mid"></div>
+        <div class="cone-row-label" style="margin-top:8px">手前（10点）</div>
+        <div class="cone-grid-mini" id="cones-a-front"></div>
+        <div class="bingo-row" id="bingo-a"></div>
+        <p class="bingo-note">ビンゴ（縦・横・斜め1列）で+5点。複数揃っても+5点のみ</p>
+        <button class="apply-cone-btn" onclick="applyConesToMember('a')">この得点を反映する →</button>
+      </div>
+    </div>
+
+    <!-- チームB -->
+    <div class="team-block b-block" id="team-b-block">
+      <div class="team-name-row">
+        <span class="team-badge b">チームB</span>
+        <input class="team-name-input" id="team-b-name" type="text" placeholder="チーム名を入力">
+      </div>
+      <div id="members-b"></div>
+      <button class="cone-panel-toggle" onclick="toggleConePanel('b')">コーン入力で計算する</button>
+      <div class="cone-panel" id="cone-panel-b">
+        <div class="cone-target-label" id="cone-target-label-b">入力対象：メンバー1</div>
+        <div class="cone-row-label">奥（30点）— タップで＋1</div>
+        <div class="cone-grid-mini" id="cones-b-back"></div>
+        <div class="cone-row-label" style="margin-top:8px">真ん中（20点）</div>
+        <div class="cone-grid-mini" id="cones-b-mid"></div>
+        <div class="cone-row-label" style="margin-top:8px">手前（10点）</div>
+        <div class="cone-grid-mini" id="cones-b-front"></div>
+        <div class="bingo-row" id="bingo-b"></div>
+        <p class="bingo-note">ビンゴ（縦・横・斜め1列）で+5点。複数揃っても+5点のみ</p>
+        <button class="apply-cone-btn" onclick="applyConesToMember('b')">この得点を反映する →</button>
+      </div>
+    </div>
+
+    <!-- 勝敗 -->
+    <div class="match-result" id="match-result">
+      <div class="team-total-box" id="result-a">
+        <div class="team-total-label" id="result-a-name">チームA</div>
+        <div class="team-total-val" id="result-a-score">0</div>
+        <div id="result-a-badge"></div>
+      </div>
+      <div class="vs-sep">VS</div>
+      <div class="team-total-box" id="result-b">
+        <div class="team-total-label" id="result-b-name">チームB</div>
+        <div class="team-total-val" id="result-b-score">0</div>
+        <div id="result-b-badge"></div>
+      </div>
+    </div>
+
+    <button class="btn-primary" onclick="saveMatch()">この試合を記録する</button>
+  </div>
+</div>
+
+<!-- ========== 設定タブ ========== -->
+<div class="tab-content" id="tab-settings">
+  <div class="section-title">チーム事前設定</div>
+  <p style="font-size:0.78rem;color:var(--muted);margin-bottom:12px">チーム名・メンバー名を入力後、試合割り当てをしてください。自動で保存されます。</p>
+
+  <!-- 16チーム入力 -->
+  <div id="teams-setup"></div>
+
+  <!-- 試合割り当て -->
+  <div class="section-title" style="margin-top:20px">試合へのチーム割り当て</div>
+  <p style="font-size:0.78rem;color:var(--muted);margin-bottom:10px">各試合に出場するチームを選択してください</p>
+  <div id="match-assign"></div>
+
+  <!-- データリセット -->
+  <div class="section-title" style="margin-top:28px;color:var(--red)">データ管理</div>
+  <p style="font-size:0.78rem;color:var(--muted);margin-bottom:10px">全試合データ・チーム設定をリセットします。本番開始前にご利用ください。</p>
+  <button class="btn-reset" onclick="resetAll()">全データをリセットする</button>
+</div>
+
+<!-- ========== トーナメントタブ ========== -->
+<div class="tab-content" id="tab-bracket">
+  <div class="section-title">トーナメント表</div>
+  <div class="bracket-wrap">
+    <div class="bracket" id="bracket"></div>
+  </div>
+</div>
+
+<!-- ========== MVPタブ ========== -->
+<div class="tab-content" id="tab-mvp">
+  <div class="section-title">個人MVP ランキング</div>
+  <div class="mvp-podium" id="mvp-podium"></div>
+  <div class="section-title">全個人得点ランキング</div>
+  <div class="mvp-list" id="mvp-list"><div class="empty-msg">試合を記録すると表示されます</div></div>
+</div>
+
+<script>
+// =====================================================
+// 定数・状態
+// =====================================================
+const ROUNDS = [
+  { label: '1回戦',   matchCount: 8 },
+  { label: '準々決勝', matchCount: 4 },
+  { label: '準決勝',  matchCount: 2 },
+  { label: '決勝',    matchCount: 1 },
+];
+const PTS         = [30,30,30, 20,20,20, 10,10,10];
+const CONE_COLORS = ['#90a4ae','#90a4ae','#90a4ae','#ffca28','#ffca28','#ffca28','#ef5350','#ef5350','#ef5350'];
+const BINGO_DEFS  = {
+  col0:[0,3,6], col1:[1,4,7], col2:[2,5,8],
+  row0:[0,1,2], row1:[3,4,5], row2:[6,7,8],
+  diag0:[0,4,8], diag1:[2,4,6]
+};
+const BINGO_LABELS = { col0:'縦①', col1:'縦②', col2:'縦③', row0:'横(奥)', row1:'横(中)', row2:'横(前)', diag0:'斜め↘', diag1:'斜め↙' };
+const TAB_IDS = ['tab-match','tab-bracket','tab-mvp','tab-settings'];
+
+// 16チームのマスターデータ（事前設定）
+function defaultTeams() {
+  return Array.from({ length: 16 }, (_, i) => ({
+    name: '',
+    members: ['', '', ''],
+  }));
+}
+
+// localStorage からフォールバック復元
+function loadStorage() {
+  try {
+    const raw = localStorage.getItem('warinpic2026');
+    if (raw) return JSON.parse(raw);
+  } catch(e) {}
+  return null;
+}
+
+// Firebase書き込み + localStorageキャッシュ
+function saveStorage() {
+  try {
+    localStorage.setItem('warinpic2026', JSON.stringify({
+      teams: appState.teams,
+      rounds: appState.rounds,
+    }));
+  } catch(e) {}
+  // Firebase が準備できていれば書き込む
+  if (window._fbSave) window._fbSave();
+}
+
+const stored = loadStorage();
+
+const appState = {
+  teams: stored?.teams ?? defaultTeams(),
+  rounds: stored?.rounds ?? ROUNDS.map((r, ri) => ({
+    label: r.label,
+    matches: Array.from({ length: r.matchCount }, (_, mi) => ({
+      id: `${ri}-${mi}`,
+      teamA: { name: '', members: [{name:'',score:0},{name:'',score:0},{name:'',score:0}] },
+      teamB: { name: '', members: [{name:'',score:0},{name:'',score:0},{name:'',score:0}] },
+      assignA: -1,
+      assignB: -1,
+      winner: null, saved: false,
+    }))
+  })),
+  currentRound: 0,
+  currentMatch: 0,
+  cones: { a: new Array(9).fill(0), b: new Array(9).fill(0) },
+  bingoActive: { a: {}, b: {} },
+  selectedMember: { a: 0, b: 0 },
+};
+window.appState = appState;
+
+// stored から復元した rounds には assignA/B がない場合を補完
+appState.rounds.forEach(round => round.matches.forEach(m => {
+  if (m.assignA === undefined) m.assignA = -1;
+  if (m.assignB === undefined) m.assignB = -1;
+}));
+
+// リモート更新時のUI再描画コールバック
+window._onRemoteUpdate = () => {
+  buildMatchSelector();
+  renderMatchForm();
+  // 現在開いているタブに応じて再描画
+  const activeTab = document.querySelector('.tab-content.active');
+  if (activeTab) {
+    if (activeTab.id === 'tab-bracket') renderBracket();
+    else if (activeTab.id === 'tab-mvp') renderMVP();
+    else if (activeTab.id === 'tab-settings') renderSettings();
+  }
+};
+
+// =====================================================
+// タブ
+// =====================================================
+function showTab(id) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  const idx = TAB_IDS.indexOf(id);
+  if (idx >= 0) document.querySelectorAll('.tab-btn')[idx].classList.add('active');
+  if (id === 'tab-bracket') renderBracket();
+  if (id === 'tab-mvp') renderMVP();
+  if (id === 'tab-settings') renderSettings();
+}
+
+// =====================================================
+// 試合セレクター
+// =====================================================
+function buildMatchSelector() {
+  const sel = document.getElementById('match-selector');
+  sel.innerHTML = '';
+  appState.rounds.forEach((round, ri) => {
+    const grp = document.createElement('div');
+    grp.className = 'round-group';
+    const lbl = document.createElement('div');
+    lbl.className = 'round-label';
+    lbl.textContent = round.label;
+    grp.appendChild(lbl);
+    const btns = document.createElement('div');
+    btns.className = 'round-btns';
+    round.matches.forEach((m, mi) => {
+      const btn = document.createElement('button');
+      btn.className = 'match-btn'
+        + (m.saved ? ' done' : '')
+        + (ri === appState.currentRound && mi === appState.currentMatch ? ' active' : '');
+      btn.textContent = `第${mi+1}試合`;
+      btn.onclick = () => selectMatch(ri, mi);
+      btns.appendChild(btn);
+    });
+    grp.appendChild(btns);
+    sel.appendChild(grp);
+  });
+}
+
+function selectMatch(ri, mi) {
+  appState.currentRound = ri;
+  appState.currentMatch = mi;
+  appState.cones.a.fill(0); appState.cones.b.fill(0);
+  appState.bingoActive.a = {}; appState.bingoActive.b = {};
+  appState.selectedMember.a = 0; appState.selectedMember.b = 0;
+  buildMatchSelector();
+  renderMatchForm();
+}
+
+// =====================================================
+// フォーム描画
+// =====================================================
+function renderMatchForm() {
+  const ri = appState.currentRound, mi = appState.currentMatch;
+  const match = appState.rounds[ri].matches[mi];
+  const label = `${appState.rounds[ri].label} 第${mi+1}試合`;
+
+  // タイトルと保存状態を同時に表示
+  const titleEl = document.getElementById('form-title');
+  titleEl.textContent = match.saved ? `${label} ✓ 記録済み` : label;
+  titleEl.className = 'match-title' + (match.saved ? ' is-saved' : '');
+
+  // 記録ボタンも状態に合わせて変える
+  const saveBtn = document.querySelector('#match-form .btn-primary');
+  if (saveBtn) {
+    saveBtn.textContent = match.saved ? '上書き保存する' : 'この試合を記録する';
+    saveBtn.className = 'btn-primary' + (match.saved ? ' is-edit' : '');
+  }
+
+  document.getElementById('team-a-name').value = match.teamA.name;
+  document.getElementById('team-b-name').value = match.teamB.name;
+  renderMembers('a', match.teamA.members);
+  renderMembers('b', match.teamB.members);
+  buildConePanel('a'); buildConePanel('b');
+  updateResult();
+}
+
+function renderMembers(team, members) {
+  const container = document.getElementById(`members-${team}`);
+  container.innerHTML = '';
+  members.forEach((m, idx) => {
+    const row = document.createElement('div');
+    const isSel = idx === appState.selectedMember[team];
+    row.className = 'member-row' + (isSel ? ' selected' : '');
+    row.id = `member-row-${team}-${idx}`;
+    row.innerHTML = `
+      <input class="member-name-input" placeholder="メンバー${idx+1}の名前"
+        value="${m.name}" oninput="updateMemberName('${team}',${idx},this.value)">
+      <div class="member-score-ctrl">
+        <button class="score-btn" onclick="event.stopPropagation();changeScore('${team}',${idx},-10)" title="−10">－</button>
+        <span class="score-val${m.score>0?' nonzero':''}" id="score-${team}-${idx}">${m.score}</span>
+      </div>
+    `;
+    // 行タップで選択
+    row.addEventListener('click', () => selectMember(team, idx));
+    container.appendChild(row);
+  });
+  // コーンパネルが開いていれば対象ラベルも更新
+  updateConeTargetLabel(team);
+}
+
+function selectMember(team, idx) {
+  appState.selectedMember[team] = idx;
+  // 選択クラスを付け替え
+  for (let i = 0; i < 3; i++) {
+    const r = document.getElementById(`member-row-${team}-${i}`);
+    if (r) r.className = 'member-row' + (i === idx ? ' selected' : '');
+  }
+  updateConeTargetLabel(team);
+}
+
+function updateConeTargetLabel(team) {
+  const label = document.getElementById(`cone-target-label-${team}`);
+  if (!label) return;
+  const match = currentMatch();
+  const members = match[`team${team.toUpperCase()}`].members;
+  const idx = appState.selectedMember[team];
+  const name = members[idx]?.name || `メンバー${idx+1}`;
+  label.textContent = `入力対象：${name}`;
+}
+
+function updateMemberName(team, idx, val) {
+  currentMatch()[`team${team.toUpperCase()}`].members[idx].name = val;
+}
+
+function changeScore(team, idx, delta) {
+  const members = currentMatch()[`team${team.toUpperCase()}`].members;
+  members[idx].score = Math.max(0, members[idx].score + delta);
+  const el = document.getElementById(`score-${team}-${idx}`);
+  el.textContent = members[idx].score;
+  el.className = 'score-val' + (members[idx].score > 0 ? ' nonzero' : '');
+  updateResult();
+}
+
+function currentMatch() {
+  return appState.rounds[appState.currentRound].matches[appState.currentMatch];
+}
+
+// =====================================================
+// コーンパネル
+// =====================================================
+function buildConePanel(team) {
+  appState.cones[team].fill(0);
+  appState.bingoActive[team] = {};
+
+  ['back','mid','front'].forEach((row, rowIdx) => {
+    const grid = document.getElementById(`cones-${team}-${row}`);
+    grid.innerHTML = '';
+    for (let col = 0; col < 3; col++) {
+      const cid = rowIdx * 3 + col;
+      const cell = document.createElement('div');
+      cell.className = 'cone-cell';
+      cell.id = `cone-${team}-${cid}`;
+      // コーンをタップで+1
+      cell.onclick = () => changeCone(team, cid, +1);
+      cell.innerHTML = `
+        <span class="cone-cnt-badge" id="cv-${team}-${cid}">0</span>
+        <svg viewBox="0 0 60 60"><path d="M30 4 L56 54 H4 Z" fill="${CONE_COLORS[cid]}"/></svg>
+        <span class="cone-pts-mini">${PTS[cid]}点</span>
+        <div class="cone-minus-row">
+          <button class="cnt-mini" onclick="event.stopPropagation();changeCone('${team}',${cid},-1)" title="−1">－</button>
+        </div>
+      `;
+      grid.appendChild(cell);
+    }
+  });
+
+  // ビンゴチップ
+  const bingoRow = document.getElementById(`bingo-${team}`);
+  bingoRow.innerHTML = '';
+  Object.keys(BINGO_DEFS).forEach(key => {
+    const chip = document.createElement('button');
+    chip.className = 'bingo-chip';
+    chip.dataset.line = key;
+    chip.textContent = BINGO_LABELS[key];
+    chip.onclick = () => {
+      appState.bingoActive[team][key] = !appState.bingoActive[team][key];
+      chip.classList.toggle('active', appState.bingoActive[team][key]);
+    };
+    bingoRow.appendChild(chip);
+  });
+}
+
+function changeCone(team, cid, delta) {
+  appState.cones[team][cid] = Math.max(0, appState.cones[team][cid] + delta);
+  const count = appState.cones[team][cid];
+
+  const badge = document.getElementById(`cv-${team}-${cid}`);
+  if (badge) { badge.textContent = count; }
+
+  const cell = document.getElementById(`cone-${team}-${cid}`);
+  if (cell) {
+    cell.classList.remove('hit','hit2');
+    if (count === 1) cell.classList.add('hit');
+    else if (count >= 2) cell.classList.add('hit2');
+  }
+
+  // ビンゴ自動検出
+  Object.keys(BINGO_DEFS).forEach(key => {
+    const complete = BINGO_DEFS[key].every(id => appState.cones[team][id] >= 1);
+    const chip = document.querySelector(`#bingo-${team} [data-line="${key}"]`);
+    if (chip) {
+      if (complete) { appState.bingoActive[team][key] = true; chip.classList.add('active'); }
+    }
+  });
+}
+
+function calcConeScore(team) {
+  const base = appState.cones[team].reduce((s, c, i) => s + c * PTS[i], 0);
+  const bingo = Object.values(appState.bingoActive[team]).some(v => v) ? 5 : 0;
+  return base + bingo;
+}
+
+function toggleConePanel(team) {
+  const panel = document.getElementById(`cone-panel-${team}`);
+  const btn = panel.previousElementSibling;
+  const isOpen = panel.classList.toggle('open');
+  btn.textContent = isOpen ? '▲ コーン入力を閉じる' : '▼ コーン入力で計算する';
+}
+
+function applyConesToMember(team) {
+  const score = calcConeScore(team);
+  const match = currentMatch();
+  const members = match[`team${team.toUpperCase()}`].members;
+  // 選択中メンバーに反映
+  const idx = appState.selectedMember[team];
+  members[idx].score = score;
+  // 次のメンバーを自動選択（末尾なら維持）
+  if (idx < 2) {
+    appState.selectedMember[team] = idx + 1;
+  }
+  renderMembers(team, members);
+  updateResult();
+  // コーンをリセット
+  appState.cones[team].fill(0);
+  appState.bingoActive[team] = {};
+  buildConePanel(team);
+  const panel = document.getElementById(`cone-panel-${team}`);
+  panel.classList.remove('open');
+  panel.previousElementSibling.textContent = '▼ コーン入力で計算する';
+}
+
+// =====================================================
+// 勝敗
+// =====================================================
+function updateResult() {
+  const match = currentMatch();
+  const nameA = document.getElementById('team-a-name').value || 'チームA';
+  const nameB = document.getElementById('team-b-name').value || 'チームB';
+  const totA = match.teamA.members.reduce((s, m) => s + m.score, 0);
+  const totB = match.teamB.members.reduce((s, m) => s + m.score, 0);
+
+  document.getElementById('result-a-name').textContent = nameA;
+  document.getElementById('result-b-name').textContent = nameB;
+  document.getElementById('result-a-score').textContent = totA;
+  document.getElementById('result-b-score').textContent = totB;
+
+  const boxA = document.getElementById('result-a');
+  const boxB = document.getElementById('result-b');
+  const badgeA = document.getElementById('result-a-badge');
+  const badgeB = document.getElementById('result-b-badge');
+  boxA.classList.remove('winner','loser');
+  boxB.classList.remove('winner','loser');
+  badgeA.innerHTML = ''; badgeB.innerHTML = '';
+
+  if (totA > totB) {
+    boxA.classList.add('winner'); boxB.classList.add('loser');
+    badgeA.innerHTML = '<span class="win-badge">勝利</span>';
+  } else if (totB > totA) {
+    boxB.classList.add('winner'); boxA.classList.add('loser');
+    badgeB.innerHTML = '<span class="win-badge">勝利</span>';
+  } else if (totA > 0) {
+    badgeA.innerHTML = '<span class="draw-badge">引き分け</span>';
+    badgeB.innerHTML = '<span class="draw-badge">引き分け</span>';
+  }
+}
+
+// =====================================================
+// 保存（記録済みでも上書き可能）
+// =====================================================
+function saveMatch() {
+  const match = currentMatch();
+  match.teamA.name = document.getElementById('team-a-name').value.trim() || 'チームA';
+  match.teamB.name = document.getElementById('team-b-name').value.trim() || 'チームB';
+  const totA = match.teamA.members.reduce((s, m) => s + m.score, 0);
+  const totB = match.teamB.members.reduce((s, m) => s + m.score, 0);
+  match.winner = totA > totB ? 'a' : totB > totA ? 'b' : 'draw';
+  const wasEdited = match.saved;
+  match.saved = true;
+  saveStorage();
+  buildMatchSelector();
+  // フォームのタイトル・ボタンを即更新（alertより前）
+  renderMatchForm();
+  alert(wasEdited
+    ? `上書き保存しました\n${match.teamA.name} ${totA}点 vs ${match.teamB.name} ${totB}点`
+    : `記録しました\n${match.teamA.name} ${totA}点 vs ${match.teamB.name} ${totB}点`
+  );
+}
+
+// =====================================================
+// トーナメント表
+// =====================================================
+function renderBracket() {
+  const bracket = document.getElementById('bracket');
+  bracket.innerHTML = '';
+  appState.rounds.forEach(round => {
+    const col = document.createElement('div');
+    col.className = 'bracket-round';
+    col.innerHTML = `<div class="bracket-round-label">${round.label}</div>`;
+    const slots = document.createElement('div');
+    slots.className = 'bracket-slots';
+    round.matches.forEach(m => {
+      const nameA = m.teamA.name || '未定';
+      const nameB = m.teamB.name || '未定';
+      const totA  = m.teamA.members.reduce((s, x) => s + x.score, 0);
+      const totB  = m.teamB.members.reduce((s, x) => s + x.score, 0);
+      const clsA  = !m.saved ? 'tbd' : m.winner === 'a' ? 'winner' : '';
+      const clsB  = !m.saved ? 'tbd' : m.winner === 'b' ? 'winner' : '';
+      const div = document.createElement('div');
+      div.className = 'bracket-match';
+      div.innerHTML = `
+        <div class="bracket-team ${clsA}">
+          <span>${nameA}</span>
+          ${m.saved ? `<span class="bracket-score">${totA}</span>` : ''}
+        </div>
+        <div class="bracket-team ${clsB}">
+          <span>${nameB}</span>
+          ${m.saved ? `<span class="bracket-score">${totB}</span>` : ''}
+        </div>
+      `;
+      slots.appendChild(div);
+    });
+    col.appendChild(slots);
+    bracket.appendChild(col);
+  });
+}
+
+// =====================================================
+// MVP
+// =====================================================
+function renderMVP() {
+  const playerMap = {};
+  appState.rounds.forEach(round => {
+    round.matches.forEach(m => {
+      if (!m.saved) return;
+      ['teamA','teamB'].forEach(tk => {
+        const team = m[tk];
+        team.members.forEach(mb => {
+          if (!mb.name.trim()) return;
+          const key = mb.name + '__' + team.name;
+          if (!playerMap[key]) playerMap[key] = { name: mb.name, team: team.name, total: 0, games: 0 };
+          playerMap[key].total += mb.score;
+          playerMap[key].games++;
+        });
+      });
+    });
+  });
+
+  const ranking = Object.values(playerMap).sort((a, b) => b.total - a.total);
+
+  // 表彰台（2位・1位・3位の順で表示）
+  const podium = document.getElementById('mvp-podium');
+  podium.innerHTML = '';
+  [[1,'rank2','2位'],[0,'rank1','1位'],[2,'rank3','3位']].forEach(([rank, cls, label]) => {
+    const p = ranking[rank];
+    const slot = document.createElement('div');
+    slot.className = `podium-slot ${cls}`;
+    slot.innerHTML = `
+      <div class="podium-rank">${label}</div>
+      <div class="podium-card">
+        ${p
+          ? `<div class="podium-name">${p.name}</div>
+             <div class="podium-team">${p.team||'—'}</div>
+             <div class="podium-score">${p.total}<span class="podium-unit">点</span></div>`
+          : `<div class="podium-name" style="color:#ddd">—</div>`
+        }
+      </div>
+    `;
+    podium.appendChild(slot);
+  });
+
+  const list = document.getElementById('mvp-list');
+  if (ranking.length === 0) {
+    list.innerHTML = '<div class="empty-msg">試合を記録すると表示されます</div>';
+    return;
+  }
+  list.innerHTML = '';
+  ranking.forEach((p, i) => {
+    const rc = i===0?'r1':i===1?'r2':i===2?'r3':'';
+    const row = document.createElement('div');
+    row.className = 'mvp-row';
+    row.innerHTML = `
+      <div class="mvp-rank-badge ${rc}">${i+1}</div>
+      <div class="mvp-info">
+        <div class="mvp-name">${p.name}</div>
+        <div class="mvp-team">${p.team||'—'}</div>
+      </div>
+      <div class="mvp-score-col">
+        <div class="mvp-score">${p.total}点</div>
+        <div class="mvp-games">${p.games}試合</div>
+      </div>
+    `;
+    list.appendChild(row);
+  });
+}
+
+// =====================================================
+// 設定タブ描画
+// =====================================================
+function renderSettings() {
+  renderTeamsSetup();
+  renderMatchAssign();
+}
+
+function renderTeamsSetup() {
+  const container = document.getElementById('teams-setup');
+  container.innerHTML = '';
+  appState.teams.forEach((team, ti) => {
+    const card = document.createElement('div');
+    card.className = 'match-card';
+    card.style.marginBottom = '10px';
+    card.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span style="background:var(--purple);color:white;font-size:0.7rem;font-weight:700;padding:3px 8px;border-radius:4px">チーム ${ti+1}</span>
+        <input class="team-name-input" style="flex:1" placeholder="チーム名"
+          value="${esc(team.name)}"
+          oninput="updateTeamName(${ti},this.value)">
+      </div>
+      <div id="setup-members-${ti}"></div>
+    `;
+    container.appendChild(card);
+    renderSetupMembers(ti);
+  });
+}
+
+function renderSetupMembers(ti) {
+  const container = document.getElementById(`setup-members-${ti}`);
+  if (!container) return;
+  container.innerHTML = '';
+  appState.teams[ti].members.forEach((name, mi) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-bottom:5px';
+    row.innerHTML = `
+      <span style="font-size:0.7rem;color:var(--muted);font-weight:700;min-width:44px">M${mi+1}</span>
+      <input class="member-name-input" style="flex:1" placeholder="メンバー${mi+1}の名前"
+        value="${esc(name)}"
+        oninput="updateTeamMember(${ti},${mi},this.value)">
+    `;
+    container.appendChild(row);
+  });
+}
+
+function updateTeamName(ti, val) {
+  appState.teams[ti].name = val;
+  saveStorage();
+}
+
+function updateTeamMember(ti, mi, val) {
+  appState.teams[ti].members[mi] = val;
+  saveStorage();
+}
+
+// 試合割り当て描画
+function renderMatchAssign() {
+  const container = document.getElementById('match-assign');
+  container.innerHTML = '';
+
+  const teamOptions = appState.teams.map((t, i) =>
+    `<option value="${i}">${t.name || `チーム${i+1}`}</option>`
+  ).join('');
+  const noSelect = `<option value="-1">— 未割当 —</option>`;
+
+  appState.rounds.forEach((round, ri) => {
+    const sec = document.createElement('div');
+    sec.style.marginBottom = '14px';
+    sec.innerHTML = `<div class="section-title" style="margin-top:0;font-size:0.8rem">${round.label}</div>`;
+    round.matches.forEach((m, mi) => {
+      const card = document.createElement('div');
+      card.className = 'match-card';
+      card.style.marginBottom = '8px';
+      card.innerHTML = `
+        <div style="font-size:0.78rem;font-weight:900;color:var(--text);margin-bottom:8px">第${mi+1}試合</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="flex:1">
+            <div style="font-size:0.65rem;color:var(--muted);font-weight:700;margin-bottom:3px">チームA</div>
+            <select class="team-name-input" style="width:100%;padding:6px 10px"
+              onchange="assignTeam(${ri},${mi},'a',this.value)">
+              ${noSelect}${teamOptions}
+            </select>
+          </div>
+          <div style="font-size:0.85rem;color:var(--pink2);font-weight:900">VS</div>
+          <div style="flex:1">
+            <div style="font-size:0.65rem;color:var(--muted);font-weight:700;margin-bottom:3px">チームB</div>
+            <select class="team-name-input" style="width:100%;padding:6px 10px"
+              onchange="assignTeam(${ri},${mi},'b',this.value)">
+              ${noSelect}${teamOptions}
+            </select>
+          </div>
+        </div>
+      `;
+      // 現在の割り当てを反映
+      const selA = card.querySelectorAll('select')[0];
+      const selB = card.querySelectorAll('select')[1];
+      selA.value = m.assignA;
+      selB.value = m.assignB;
+      sec.appendChild(card);
+    });
+    container.appendChild(sec);
+  });
+}
+
+function assignTeam(ri, mi, side, tidxStr) {
+  const match = appState.rounds[ri].matches[mi];
+  const tidx = parseInt(tidxStr);
+  const teamKey = side === 'a' ? 'teamA' : 'teamB';
+  const assignKey = side === 'a' ? 'assignA' : 'assignB';
+  match[assignKey] = tidx;
+
+  if (tidx >= 0) {
+    const src = appState.teams[tidx];
+    match[teamKey].name = src.name;
+    match[teamKey].members = src.members.map(n => ({ name: n, score: 0 }));
+  } else {
+    match[teamKey].name = '';
+    match[teamKey].members = [{name:'',score:0},{name:'',score:0},{name:'',score:0}];
+  }
+  saveStorage();
+  // 現在フォームを再描画
+  if (ri === appState.currentRound && mi === appState.currentMatch) {
+    renderMatchForm();
+  }
+}
+
+// =====================================================
+// リセット
+// =====================================================
+function resetAll() {
+  if (!confirm('全データをリセットします。\nこの操作は元に戻せません。続けますか？')) return;
+  // appState を初期値に戻す
+  appState.teams = defaultTeams();
+  appState.rounds = ROUNDS.map((r, ri) => ({
+    label: r.label,
+    matches: Array.from({ length: r.matchCount }, (_, mi) => ({
+      id: `${ri}-${mi}`,
+      teamA: { name: '', members: [{name:'',score:0},{name:'',score:0},{name:'',score:0}] },
+      teamB: { name: '', members: [{name:'',score:0},{name:'',score:0},{name:'',score:0}] },
+      assignA: -1, assignB: -1,
+      winner: null, saved: false,
+    }))
+  }));
+  appState.currentRound = 0;
+  appState.currentMatch = 0;
+  appState.cones = { a: new Array(9).fill(0), b: new Array(9).fill(0) };
+  appState.bingoActive = { a: {}, b: {} };
+  appState.selectedMember = { a: 0, b: 0 };
+
+  // localStorage をクリア
+  try { localStorage.removeItem('warinpic2026'); } catch(e) {}
+
+  // Firebase をクリア
+  if (window._fbReset) window._fbReset();
+
+  // UI を再描画
+  buildMatchSelector();
+  renderMatchForm();
+  alert('リセット完了しました。');
+}
+
+// エスケープユーティリティ
+function esc(str) {
+  return (str || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+}
+
+// =====================================================
+// 初期化
+// =====================================================
+buildMatchSelector();
+renderMatchForm();
+</script>
+</body>
+</html>
