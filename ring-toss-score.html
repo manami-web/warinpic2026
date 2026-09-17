@@ -470,7 +470,8 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .bracket-team:last-child { border-bottom: none; }
-.bracket-team.winner { background: var(--mint2); color: #065f46; font-weight: 700; }
+.bracket-team.winner { background: white; color: var(--text); font-weight: 700; }
+.bracket-team.loser  { background: #f3f4f6; color: #9ca3af; }
 .bracket-team.tbd    { color: #9ca3af; font-style: italic; }
 .bracket-score { font-weight: 700; }
 
@@ -1180,8 +1181,8 @@ function renderBracket() {
       const nameB = m.teamB.name || '?';
       const totA  = m.teamA.members.reduce((s, x) => s + x.score, 0);
       const totB  = m.teamB.members.reduce((s, x) => s + x.score, 0);
-      const clsA  = !m.saved ? (m.teamA.name ? '' : 'tbd') : m.winner === 'a' ? 'winner' : '';
-      const clsB  = !m.saved ? (m.teamB.name ? '' : 'tbd') : m.winner === 'b' ? 'winner' : '';
+      const clsA  = !m.saved ? (m.teamA.name ? '' : 'tbd') : m.winner === 'a' ? 'winner' : m.winner === 'b' ? 'loser' : '';
+      const clsB  = !m.saved ? (m.teamB.name ? '' : 'tbd') : m.winner === 'b' ? 'winner' : m.winner === 'a' ? 'loser' : '';
       const sch   = SCHEDULE_MAP[`${ri}-${mi}`];
       const venueColor = sch?.venue === 'A' ? 'var(--mint)' : sch?.venue === 'B' ? 'var(--yellow)' : 'var(--muted)';
       const venueLabel = sch?.venue ? `会場${sch.venue}` : '';
