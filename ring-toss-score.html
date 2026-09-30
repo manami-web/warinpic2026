@@ -598,6 +598,33 @@ body {
       </div>
     </div>
 
+    <!-- 決勝用チームC（JS側で表示/非表示） -->
+    <div class="team-block" id="team-c-block" style="display:none;border-left-color:var(--blue)">
+      <div class="team-name-row">
+        <span class="team-badge" style="background:var(--blue)">チームC</span>
+        <select class="team-name-input" id="team-c-select" onchange="onTeamSelect('c',this.value)" style="flex:1;padding:6px 10px">
+          <option value="">— 手動入力 —</option>
+        </select>
+      </div>
+      <div id="team-c-manual" style="margin-bottom:6px">
+        <input class="team-name-input" id="team-c-name" type="text" placeholder="チーム名を入力" style="width:100%">
+      </div>
+      <div id="members-c"></div>
+      <button class="cone-panel-toggle" style="border-color:#bfdbfe;background:#eff6ff;color:var(--blue)" onclick="toggleConePanel('c')">コーン入力で計算する</button>
+      <div class="cone-panel" id="cone-panel-c">
+        <div class="cone-target-label" id="cone-target-label-c" style="background:#eff6ff;border-color:#bfdbfe;color:var(--blue)">入力対象：メンバー1</div>
+        <div class="cone-row-label">奥（30点）— タップで＋1</div>
+        <div class="cone-grid-mini" id="cones-c-back"></div>
+        <div class="cone-row-label" style="margin-top:8px">真ん中（20点）</div>
+        <div class="cone-grid-mini" id="cones-c-mid"></div>
+        <div class="cone-row-label" style="margin-top:8px">手前（10点）</div>
+        <div class="cone-grid-mini" id="cones-c-front"></div>
+        <div class="bingo-row" id="bingo-c"></div>
+        <p class="bingo-note">ビンゴ（縦・横・斜め1列）で+5点。複数揃っても+5点のみ</p>
+        <button class="apply-cone-btn" style="background:var(--blue)" onclick="applyConesToMember('c')">この得点を反映する →</button>
+      </div>
+    </div>
+
     <!-- 勝敗 -->
     <div class="match-result" id="match-result">
       <div class="team-total-box" id="result-a">
@@ -610,6 +637,12 @@ body {
         <div class="team-total-label" id="result-b-name">チームB</div>
         <div class="team-total-val" id="result-b-score">0</div>
         <div id="result-b-badge"></div>
+      </div>
+      <div class="vs-sep" id="result-c-sep" style="display:none">VS</div>
+      <div class="team-total-box" id="result-c" style="display:none">
+        <div class="team-total-label" id="result-c-name">チームC</div>
+        <div class="team-total-val" id="result-c-score">0</div>
+        <div id="result-c-badge"></div>
       </div>
     </div>
 
@@ -651,49 +684,39 @@ body {
 // =====================================================
 // 定数・状態
 // =====================================================
+// ラウンド定義（決勝は総当たり3試合）
 const ROUNDS = [
-  { label: '1回戦',   matchCount: 8 },
-  { label: '準々決勝', matchCount: 4 },
-  { label: '準決勝',  matchCount: 2 },
-  { label: '決勝',    matchCount: 1 },
+  { label: '1回戦', matchCount: 6 },
+  { label: '2回戦', matchCount: 3 },
+  { label: '決勝',  matchCount: 3, isFinal: true },
 ];
 
-// 全15試合の通し番号・会場・開始時刻
-// インターバル：第8試合後・第12試合後・第14試合後に3分
+// 全12試合のスケジュール（12:40開始・6分間隔・2会場）
+// 1回戦6試合→2回戦3試合→決勝3試合
+// 2回戦の第9試合・決勝の第10〜12試合はシングル
 const MATCH_SCHEDULE = (() => {
   const schedule = [];
-  // [ラウンドindex, 試合index, 会場('A'|'B'|'')]
+  // [ri, mi, venue, isPairFirst]
+  // isPairFirst=true → 次の試合と同時刻（+0）、false → +6分
   const order = [
-    [0,0,'A'],[0,1,'B'],
-    [0,2,'A'],[0,3,'B'],
-    [0,4,'A'],[0,5,'B'],
-    [0,6,'A'],[0,7,'B'],
-    // インターバル3分
-    [1,0,'A'],[1,1,'B'],
-    [1,2,'A'],[1,3,'B'],
-    // インターバル3分
-    [2,0,'A'],[2,1,'B'],
-    // インターバル3分
-    [3,0,''],
+    [0,0,'A',true ],[0,1,'B',false], // 1・2試合 同時
+    [0,2,'A',true ],[0,3,'B',false], // 3・4試合 同時
+    [0,4,'A',true ],[0,5,'B',false], // 5・6試合 同時
+    [1,0,'A',true ],[1,1,'B',false], // 7・8試合 同時
+    [1,2,'A',false],                 // 9試合 単独
+    [2,0,'A',false],                 // 10試合 単独（決勝は全部順番）
+    [2,1,'B',false],                 // 11試合 単独
+    [2,2,'A',false],                 // 12試合 単独
   ];
-  let minutes = 12 * 60 + 35; // 12:35
+  let minutes = 12 * 60 + 40; // 12:40
   order.forEach((item, idx) => {
-    const [ri, mi, venue] = item;
+    const [ri, mi, venue, isPairFirst] = item;
     const num = idx + 1;
     const hh = String(Math.floor(minutes / 60)).padStart(2,'0');
     const mm = String(minutes % 60).padStart(2,'0');
     schedule.push({ ri, mi, num, venue, time: `${hh}:${mm}` });
-    // 次の試合の開始時刻を計算
-    // 同じ時間帯の2試合目（偶数インデックス→奇数）は+0分
-    // 次の時間帯へは+5分、インターバル後は+8分
-    const nextIdx = idx + 1;
-    if (nextIdx < order.length) {
-      const isInterval = (num === 8 || num === 12 || num === 14);
-      if (idx % 2 === 1) {
-        // 奇数インデックス（2試合目）→次の時間帯
-        minutes += isInterval ? 8 : 5;
-      }
-      // 偶数インデックス（1試合目）→同じ時間（+0）
+    if (idx + 1 < order.length && !isPairFirst) {
+      minutes += 6;
     }
   });
   return schedule;
@@ -712,9 +735,9 @@ const BINGO_DEFS  = {
 const BINGO_LABELS = { col0:'縦①', col1:'縦②', col2:'縦③', row0:'横(奥)', row1:'横(中)', row2:'横(前)', diag0:'斜め↘', diag1:'斜め↙' };
 const TAB_IDS = ['tab-match','tab-bracket','tab-mvp','tab-settings'];
 
-// 16チームのマスターデータ（事前設定）
+// 12チームのマスターデータ（事前設定）
 function defaultTeams() {
-  return Array.from({ length: 16 }, (_, i) => ({
+  return Array.from({ length: 12 }, (_, i) => ({
     name: '',
     members: ['', '', ''],
   }));
@@ -747,28 +770,34 @@ const appState = {
   teams: stored?.teams ?? defaultTeams(),
   rounds: stored?.rounds ?? ROUNDS.map((r, ri) => ({
     label: r.label,
+    isFinal: r.isFinal || false,
     matches: Array.from({ length: r.matchCount }, (_, mi) => ({
       id: `${ri}-${mi}`,
       teamA: { name: '', members: [{name:'',score:0},{name:'',score:0},{name:'',score:0}] },
       teamB: { name: '', members: [{name:'',score:0},{name:'',score:0},{name:'',score:0}] },
-      assignA: -1,
-      assignB: -1,
+      teamC: { name: '', members: [{name:'',score:0},{name:'',score:0},{name:'',score:0}] },
+      assignA: -1, assignB: -1, assignC: -1,
       winner: null, saved: false,
     }))
   })),
   currentRound: 0,
   currentMatch: 0,
-  cones: { a: new Array(9).fill(0), b: new Array(9).fill(0) },
-  bingoActive: { a: {}, b: {} },
-  selectedMember: { a: 0, b: 0 },
+  cones: { a: new Array(9).fill(0), b: new Array(9).fill(0), c: new Array(9).fill(0) },
+  bingoActive: { a: {}, b: {}, c: {} },
+  selectedMember: { a: 0, b: 0, c: 0 },
 };
 window.appState = appState;
 
-// stored から復元した rounds には assignA/B がない場合を補完
-appState.rounds.forEach(round => round.matches.forEach(m => {
-  if (m.assignA === undefined) m.assignA = -1;
-  if (m.assignB === undefined) m.assignB = -1;
-}));
+// stored から復元した rounds には不足フィールドを補完
+appState.rounds.forEach((round, ri) => {
+  if (round.isFinal === undefined) round.isFinal = (ri === 2);
+  round.matches.forEach(m => {
+    if (m.assignA === undefined) m.assignA = -1;
+    if (m.assignB === undefined) m.assignB = -1;
+    if (m.assignC === undefined) m.assignC = -1;
+    if (!m.teamC) m.teamC = { name: '', members: [{name:'',score:0},{name:'',score:0},{name:'',score:0}] };
+  });
+});
 
 // リモート更新時のUI再描画コールバック
 window._onRemoteUpdate = () => {
@@ -829,9 +858,11 @@ function buildMatchSelector() {
 function selectMatch(ri, mi) {
   appState.currentRound = ri;
   appState.currentMatch = mi;
-  appState.cones.a.fill(0); appState.cones.b.fill(0);
-  appState.bingoActive.a = {}; appState.bingoActive.b = {};
-  appState.selectedMember.a = 0; appState.selectedMember.b = 0;
+  ['a','b','c'].forEach(t => {
+    appState.cones[t].fill(0);
+    appState.bingoActive[t] = {};
+    appState.selectedMember[t] = 0;
+  });
   buildMatchSelector();
   renderMatchForm();
 }
@@ -841,8 +872,10 @@ function selectMatch(ri, mi) {
 // =====================================================
 function renderMatchForm() {
   const ri = appState.currentRound, mi = appState.currentMatch;
-  const match = appState.rounds[ri].matches[mi];
-  const label = `${appState.rounds[ri].label} 第${mi+1}試合`;
+  const round = appState.rounds[ri];
+  const match = round.matches[mi];
+  const isFinal = round.isFinal || false;
+  const label = `${round.label} 第${mi+1}試合`;
 
   const titleEl = document.getElementById('form-title');
   titleEl.textContent = match.saved ? `${label} ✓ 記録済み` : label;
@@ -854,36 +887,47 @@ function renderMatchForm() {
     saveBtn.className = 'btn-primary' + (match.saved ? ' is-edit' : '');
   }
 
+  // 決勝はチームCブロック・結果欄を表示
+  const cBlock = document.getElementById('team-c-block');
+  const cSep = document.getElementById('result-c-sep');
+  const cRes = document.getElementById('result-c');
+  if (cBlock) cBlock.style.display = isFinal ? '' : 'none';
+  if (cSep)   cSep.style.display   = isFinal ? '' : 'none';
+  if (cRes)   cRes.style.display   = isFinal ? '' : 'none';
+
   // チーム選択ドロップダウンを更新
-  updateTeamSelects();
+  updateTeamSelects(isFinal);
 
   // 選択状態を反映
-  ['a','b'].forEach(t => {
-    const sel = document.getElementById(`team-${t}-select`);
-    const match = currentMatch();
-    const assignKey = t === 'a' ? 'assignA' : 'assignB';
+  const teams = isFinal ? ['a','b','c'] : ['a','b'];
+  teams.forEach(t => {
+    const assignKey = `assign${t.toUpperCase()}`;
     const tidx = match[assignKey] ?? -1;
+    const sel = document.getElementById(`team-${t}-select`);
     if (sel) sel.value = tidx >= 0 ? String(tidx) : '';
-    // 手動入力欄の表示切替
     const manual = document.getElementById(`team-${t}-manual`);
     if (manual) manual.style.display = tidx >= 0 ? 'none' : '';
   });
 
   document.getElementById('team-a-name').value = match.teamA.name;
   document.getElementById('team-b-name').value = match.teamB.name;
+  document.getElementById('team-c-name').value = match.teamC?.name || '';
   renderMembers('a', match.teamA.members);
   renderMembers('b', match.teamB.members);
+  if (isFinal) renderMembers('c', match.teamC?.members || [{name:'',score:0},{name:'',score:0},{name:'',score:0}]);
   buildConePanel('a'); buildConePanel('b');
+  if (isFinal) buildConePanel('c');
   updateResult();
 }
 
 // チーム選択ドロップダウンのオプションを最新状態に更新
-function updateTeamSelects() {
+function updateTeamSelects(isFinal) {
   const options = `<option value="">— 手動入力 —</option>` +
     appState.teams.map((t, i) =>
       t.name ? `<option value="${i}">${esc(t.name)}</option>` : ''
     ).join('');
-  ['a','b'].forEach(t => {
+  const targets = isFinal ? ['a','b','c'] : ['a','b'];
+  targets.forEach(t => {
     const sel = document.getElementById(`team-${t}-select`);
     if (!sel) return;
     const cur = sel.value;
@@ -895,12 +939,11 @@ function updateTeamSelects() {
 // ドロップダウンでチームを選択したとき
 function onTeamSelect(team, val) {
   const match = currentMatch();
-  const teamKey = team === 'a' ? 'teamA' : 'teamB';
-  const assignKey = team === 'a' ? 'assignA' : 'assignB';
+  const teamKey = `team${team.toUpperCase()}`;
+  const assignKey = `assign${team.toUpperCase()}`;
   const manual = document.getElementById(`team-${team}-manual`);
 
   if (val === '') {
-    // 手動入力モード
     match[assignKey] = -1;
     if (manual) manual.style.display = '';
   } else {
@@ -1085,35 +1128,47 @@ function applyConesToMember(team) {
 // 勝敗
 // =====================================================
 function updateResult() {
+  const ri = appState.currentRound;
+  const isFinal = appState.rounds[ri].isFinal || false;
   const match = currentMatch();
-  const nameA = document.getElementById('team-a-name').value || 'チームA';
-  const nameB = document.getElementById('team-b-name').value || 'チームB';
+
   const totA = match.teamA.members.reduce((s, m) => s + m.score, 0);
   const totB = match.teamB.members.reduce((s, m) => s + m.score, 0);
+  const totC = isFinal ? (match.teamC?.members.reduce((s, m) => s + m.score, 0) || 0) : 0;
 
-  document.getElementById('result-a-name').textContent = nameA;
-  document.getElementById('result-b-name').textContent = nameB;
+  document.getElementById('result-a-name').textContent = match.teamA.name || 'チームA';
+  document.getElementById('result-b-name').textContent = match.teamB.name || 'チームB';
   document.getElementById('result-a-score').textContent = totA;
   document.getElementById('result-b-score').textContent = totB;
 
-  const boxA = document.getElementById('result-a');
-  const boxB = document.getElementById('result-b');
-  const badgeA = document.getElementById('result-a-badge');
-  const badgeB = document.getElementById('result-b-badge');
-  boxA.classList.remove('winner','loser');
-  boxB.classList.remove('winner','loser');
-  badgeA.innerHTML = ''; badgeB.innerHTML = '';
-
-  if (totA > totB) {
-    boxA.classList.add('winner'); boxB.classList.add('loser');
-    badgeA.innerHTML = '<span class="win-badge">勝利</span>';
-  } else if (totB > totA) {
-    boxB.classList.add('winner'); boxA.classList.add('loser');
-    badgeB.innerHTML = '<span class="win-badge">勝利</span>';
-  } else if (totA > 0) {
-    badgeA.innerHTML = '<span class="draw-badge">引き分け</span>';
-    badgeB.innerHTML = '<span class="draw-badge">引き分け</span>';
+  if (isFinal) {
+    document.getElementById('result-c-name').textContent = match.teamC?.name || 'チームC';
+    document.getElementById('result-c-score').textContent = totC;
   }
+
+  // 各ボックスのクラスをリセット
+  ['a','b','c'].forEach(t => {
+    const box = document.getElementById(`result-${t}`);
+    if (box) { box.classList.remove('winner','loser'); }
+    const badge = document.getElementById(`result-${t}-badge`);
+    if (badge) badge.innerHTML = '';
+  });
+
+  if (!isFinal) {
+    const boxA = document.getElementById('result-a');
+    const boxB = document.getElementById('result-b');
+    if (totA > totB) {
+      boxA.classList.add('winner'); boxB.classList.add('loser');
+      document.getElementById('result-a-badge').innerHTML = '<span class="win-badge">勝利</span>';
+    } else if (totB > totA) {
+      boxB.classList.add('winner'); boxA.classList.add('loser');
+      document.getElementById('result-b-badge').innerHTML = '<span class="win-badge">勝利</span>';
+    } else if (totA > 0) {
+      document.getElementById('result-a-badge').innerHTML = '<span class="draw-badge">引き分け</span>';
+      document.getElementById('result-b-badge').innerHTML = '<span class="draw-badge">引き分け</span>';
+    }
+  }
+  // 決勝は勝敗表示なし（総当たりのため）
 }
 
 // =====================================================
@@ -1121,47 +1176,49 @@ function updateResult() {
 // =====================================================
 function saveMatch() {
   const ri = appState.currentRound, mi = appState.currentMatch;
+  const isFinal = appState.rounds[ri].isFinal || false;
   const match = currentMatch();
-  // 手動入力の場合のみinputから名前を取得
   if ((match.assignA ?? -1) < 0) match.teamA.name = document.getElementById('team-a-name').value.trim() || 'チームA';
   if ((match.assignB ?? -1) < 0) match.teamB.name = document.getElementById('team-b-name').value.trim() || 'チームB';
+  if (isFinal && (match.assignC ?? -1) < 0) match.teamC.name = document.getElementById('team-c-name').value.trim() || 'チームC';
   const totA = match.teamA.members.reduce((s, m) => s + m.score, 0);
   const totB = match.teamB.members.reduce((s, m) => s + m.score, 0);
-  match.winner = totA > totB ? 'a' : totB > totA ? 'b' : 'draw';
+  if (!isFinal) {
+    match.winner = totA > totB ? 'a' : totB > totA ? 'b' : 'draw';
+  } else {
+    match.winner = null; // 決勝は総当たりなので勝敗なし
+  }
   const wasEdited = match.saved;
   match.saved = true;
   saveStorage();
   buildMatchSelector();
   renderMatchForm();
-  // 勝者を次のラウンドに自動繰り上げ
-  propagateWinner(ri, mi, match);
+  if (!isFinal) propagateWinner(ri, mi, match);
 
-  alert(wasEdited
-    ? `上書き保存しました\n${match.teamA.name} ${totA}点 vs ${match.teamB.name} ${totB}点`
-    : `記録しました\n${match.teamA.name} ${totA}点 vs ${match.teamB.name} ${totB}点`
-  );
+  const msg = isFinal
+    ? `${match.teamA.name} ${totA}点 / ${match.teamB.name} ${totB}点 / ${match.teamC?.name||'C'} ${match.teamC?.members.reduce((s,m)=>s+m.score,0)||0}点`
+    : `${match.teamA.name} ${totA}点 vs ${match.teamB.name} ${totB}点`;
+  alert(wasEdited ? `上書き保存しました\n${msg}` : `記録しました\n${msg}`);
 }
 
-// 勝者を次ラウンドの対応試合に繰り上げる
+// 勝者を次ラウンドの対応試合に繰り上げる（1回戦→2回戦のみ、決勝は繰り上げなし）
 function propagateWinner(ri, mi, match) {
   const nextRi = ri + 1;
-  if (nextRi >= appState.rounds.length) return; // 決勝の次はない
+  if (nextRi >= appState.rounds.length) return;
+  const nextRound = appState.rounds[nextRi];
+  if (nextRound.isFinal) return; // 決勝は総当たりなので繰り上げなし
   const nextMi = Math.floor(mi / 2);
-  const nextSide = mi % 2 === 0 ? 'a' : 'b'; // 偶数試合→A枠、奇数試合→B枠
-  const nextMatch = appState.rounds[nextRi].matches[nextMi];
-  if (!nextMatch) return;
-  if (match.winner === 'draw') return; // 引き分けは繰り上げなし
+  const nextSide = mi % 2 === 0 ? 'a' : 'b';
+  const nextMatch = nextRound.matches[nextMi];
+  if (!nextMatch || nextMatch.saved) return;
+  if (match.winner === 'draw') return;
 
   const winnerTeam = match.winner === 'a' ? match.teamA : match.teamB;
   const teamKey = nextSide === 'a' ? 'teamA' : 'teamB';
   const assignKey = nextSide === 'a' ? 'assignA' : 'assignB';
-
-  // すでに記録済みの試合は上書きしない
-  if (nextMatch.saved) return;
-
   nextMatch[teamKey].name = winnerTeam.name;
   nextMatch[teamKey].members = winnerTeam.members.map(m => ({ name: m.name, score: 0 }));
-  nextMatch[assignKey] = -1; // 手動割り当てではなく繰り上げ
+  nextMatch[assignKey] = -1;
 }
 
 // =====================================================
@@ -1177,35 +1234,61 @@ function renderBracket() {
     const slots = document.createElement('div');
     slots.className = 'bracket-slots';
     round.matches.forEach((m, mi) => {
-      const nameA = m.teamA.name || '?';
-      const nameB = m.teamB.name || '?';
-      const totA  = m.teamA.members.reduce((s, x) => s + x.score, 0);
-      const totB  = m.teamB.members.reduce((s, x) => s + x.score, 0);
-      const clsA  = !m.saved ? (m.teamA.name ? '' : 'tbd') : m.winner === 'a' ? 'winner' : m.winner === 'b' ? 'loser' : '';
-      const clsB  = !m.saved ? (m.teamB.name ? '' : 'tbd') : m.winner === 'b' ? 'winner' : m.winner === 'a' ? 'loser' : '';
-      const sch   = SCHEDULE_MAP[`${ri}-${mi}`];
+      const sch        = SCHEDULE_MAP[`${ri}-${mi}`];
       const venueColor = sch?.venue === 'A' ? 'var(--mint)' : sch?.venue === 'B' ? 'var(--yellow)' : 'var(--muted)';
       const venueLabel = sch?.venue ? `会場${sch.venue}` : '';
       const headerBg   = sch?.venue === 'A' ? 'var(--mint2)' : sch?.venue === 'B' ? 'var(--yellow2)' : '#f9fafb';
-      const div = document.createElement('div');
-      div.className = 'bracket-match';
-      div.innerHTML = `
+      const header = `
         <div style="font-size:0.6rem;padding:3px 8px;background:${headerBg};border-bottom:1px solid var(--border);font-weight:700;display:flex;justify-content:space-between;align-items:center">
           <span style="color:var(--muted)">第${sch?.num || mi+1}試合</span>
           <span style="display:flex;gap:4px;align-items:center">
             ${venueLabel ? `<span style="color:${venueColor};font-weight:700">${venueLabel}</span>` : ''}
             ${sch?.time ? `<span style="color:var(--muted)">${sch.time}</span>` : ''}
           </span>
-        </div>
-        <div class="bracket-team ${clsA}">
-          <span>${nameA}</span>
-          ${m.saved ? `<span class="bracket-score">${totA}</span>` : ''}
-        </div>
-        <div class="bracket-team ${clsB}">
-          <span>${nameB}</span>
-          ${m.saved ? `<span class="bracket-score">${totB}</span>` : ''}
-        </div>
-      `;
+        </div>`;
+      const div = document.createElement('div');
+      div.className = 'bracket-match';
+
+      if (round.isFinal) {
+        // 決勝：3チーム表示（勝敗なし）
+        const nameA = m.teamA.name || '?';
+        const nameB = m.teamB.name || '?';
+        const nameC = m.teamC?.name || '?';
+        const totA  = m.teamA.members.reduce((s, x) => s + x.score, 0);
+        const totB  = m.teamB.members.reduce((s, x) => s + x.score, 0);
+        const totC  = m.teamC?.members.reduce((s, x) => s + x.score, 0) || 0;
+        div.innerHTML = header + `
+          <div class="bracket-team ${m.teamA.name ? '' : 'tbd'}">
+            <span>${nameA}</span>
+            ${m.saved ? `<span class="bracket-score">${totA}</span>` : ''}
+          </div>
+          <div class="bracket-team ${m.teamB.name ? '' : 'tbd'}">
+            <span>${nameB}</span>
+            ${m.saved ? `<span class="bracket-score">${totB}</span>` : ''}
+          </div>
+          <div class="bracket-team ${m.teamC?.name ? '' : 'tbd'}">
+            <span>${nameC}</span>
+            ${m.saved ? `<span class="bracket-score">${totC}</span>` : ''}
+          </div>
+        `;
+      } else {
+        const nameA = m.teamA.name || '?';
+        const nameB = m.teamB.name || '?';
+        const totA  = m.teamA.members.reduce((s, x) => s + x.score, 0);
+        const totB  = m.teamB.members.reduce((s, x) => s + x.score, 0);
+        const clsA  = !m.saved ? (m.teamA.name ? '' : 'tbd') : m.winner === 'a' ? 'winner' : m.winner === 'b' ? 'loser' : '';
+        const clsB  = !m.saved ? (m.teamB.name ? '' : 'tbd') : m.winner === 'b' ? 'winner' : m.winner === 'a' ? 'loser' : '';
+        div.innerHTML = header + `
+          <div class="bracket-team ${clsA}">
+            <span>${nameA}</span>
+            ${m.saved ? `<span class="bracket-score">${totA}</span>` : ''}
+          </div>
+          <div class="bracket-team ${clsB}">
+            <span>${nameB}</span>
+            ${m.saved ? `<span class="bracket-score">${totB}</span>` : ''}
+          </div>
+        `;
+      }
       slots.appendChild(div);
     });
     col.appendChild(slots);
@@ -1344,23 +1427,24 @@ function updateTeamMember(ti, mi, val) {
 // =====================================================
 function resetAll() {
   if (!confirm('全データをリセットします。\nこの操作は元に戻せません。続けますか？')) return;
-  // appState を初期値に戻す
   appState.teams = defaultTeams();
   appState.rounds = ROUNDS.map((r, ri) => ({
     label: r.label,
+    isFinal: r.isFinal || false,
     matches: Array.from({ length: r.matchCount }, (_, mi) => ({
       id: `${ri}-${mi}`,
       teamA: { name: '', members: [{name:'',score:0},{name:'',score:0},{name:'',score:0}] },
       teamB: { name: '', members: [{name:'',score:0},{name:'',score:0},{name:'',score:0}] },
-      assignA: -1, assignB: -1,
+      teamC: { name: '', members: [{name:'',score:0},{name:'',score:0},{name:'',score:0}] },
+      assignA: -1, assignB: -1, assignC: -1,
       winner: null, saved: false,
     }))
   }));
   appState.currentRound = 0;
   appState.currentMatch = 0;
-  appState.cones = { a: new Array(9).fill(0), b: new Array(9).fill(0) };
-  appState.bingoActive = { a: {}, b: {} };
-  appState.selectedMember = { a: 0, b: 0 };
+  appState.cones = { a: new Array(9).fill(0), b: new Array(9).fill(0), c: new Array(9).fill(0) };
+  appState.bingoActive = { a: {}, b: {}, c: {} };
+  appState.selectedMember = { a: 0, b: 0, c: 0 };
 
   // localStorage をクリア
   try { localStorage.removeItem('warinpic2026'); } catch(e) {}
