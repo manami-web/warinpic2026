@@ -709,6 +709,8 @@ const MATCH_SCHEDULE = (() => {
     [2,2,'A',false],                 // 12試合 単独
   ];
   let minutes = 12 * 60 + 30; // 12:30
+  // ラウンド境界のidx: 1回戦→2回戦=idx7(第8試合後)、2回戦→決勝=idx8(第9試合後)
+  const roundBoundary = [7, 8]; // このidxの後は+8分（通常+7分）
   order.forEach((item, idx) => {
     const [ri, mi, venue, isPairFirst] = item;
     const num = idx + 1;
@@ -716,7 +718,7 @@ const MATCH_SCHEDULE = (() => {
     const mm = String(minutes % 60).padStart(2,'0');
     schedule.push({ ri, mi, num, venue, time: `${hh}:${mm}` });
     if (idx + 1 < order.length && !isPairFirst) {
-      minutes += 6;
+      minutes += roundBoundary.includes(idx) ? 8 : 7;
     }
   });
   return schedule;
