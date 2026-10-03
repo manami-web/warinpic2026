@@ -646,6 +646,15 @@ body {
       </div>
     </div>
 
+    <!-- PK戦勝者選択（同点かつ最高得点も同点の時のみ表示） -->
+    <div id="pk-select" style="display:none;margin-top:10px;background:var(--yellow2);border:1px solid #fcd34d;border-radius:8px;padding:12px">
+      <div style="font-size:0.78rem;font-weight:700;color:var(--yellow);margin-bottom:8px">PK戦 — 勝者を選択してください</div>
+      <div style="display:flex;gap:8px">
+        <button class="pk-btn" id="pk-btn-a" onclick="setPKWinner('a')" style="flex:1;padding:9px;border:1.5px solid var(--input-border);border-radius:6px;background:white;font-size:0.82rem;font-weight:600;cursor:pointer">チームA勝利</button>
+        <button class="pk-btn" id="pk-btn-b" onclick="setPKWinner('b')" style="flex:1;padding:9px;border:1.5px solid var(--input-border);border-radius:6px;background:white;font-size:0.82rem;font-weight:600;cursor:pointer">チームB勝利</button>
+      </div>
+    </div>
+
     <button class="btn-primary" onclick="saveMatch()">この試合を記録する</button>
   </div>
 </div>
@@ -1093,8 +1102,8 @@ function changeCone(team, cid, delta) {
 
 function calcConeScore(team) {
   const base = appState.cones[team].reduce((s, c, i) => s + c * PTS[i], 0);
-  const bingo = Object.values(appState.bingoActive[team]).some(v => v) ? 5 : 0;
-  return base + bingo;
+  const bingoCount = Object.values(appState.bingoActive[team]).filter(v => v).length;
+  return base + bingoCount * 5;
 }
 
 function toggleConePanel(team) {
@@ -1159,6 +1168,13 @@ function updateResult() {
   if (!isFinal) {
     const boxA = document.getElementById('result-a');
     const boxB = document.getElementById('result-b');
+    const pkSelect = document.getElementById('pk-select');
+    const pkBtnA = document.getElementById('pk-btn-a');
+    const pkBtnB = document.getElementById('pk-btn-b');
+
+    // PK選択UIを非表示にリセット
+    if (pkSelect) pkSelect.style.display = 'none';
+
     if (totA > totB) {
       boxA.classList.add('winner'); boxB.classList.add('loser');
       document.getElementById('result-a-badge').innerHTML = '<span class="win-badge">勝利</span>';
@@ -1166,11 +1182,47 @@ function updateResult() {
       boxB.classList.add('winner'); boxA.classList.add('loser');
       document.getElementById('result-b-badge').innerHTML = '<span class="win-badge">勝利</span>';
     } else if (totA > 0) {
-      document.getElementById('result-a-badge').innerHTML = '<span class="draw-badge">引き分け</span>';
-      document.getElementById('result-b-badge').innerHTML = '<span class="draw-badge">引き分け</span>';
+      // 同点 → 最高得点で比較
+      const bestA = Math.max(...match.teamA.members.map(m => m.score));
+      const bestB = Math.max(...match.teamB.members.map(m => m.score));
+      if (bestA > bestB) {
+        boxA.classList.add('winner'); boxB.classList.add('loser');
+        document.getElementById('result-a-badge').innerHTML = '<span class="win-badge">勝利（最高得点）</span>';
+      } else if (bestB > bestA) {
+        boxB.classList.add('winner'); boxA.classList.add('loser');
+        document.getElementById('result-b-badge').innerHTML = '<span class="win-badge">勝利（最高得点）</span>';
+      } else {
+        // 最高得点も同点 → PK選択UIを表示
+        document.getElementById('result-a-badge').innerHTML = '<span class="draw-badge">同点</span>';
+        document.getElementById('result-b-badge').innerHTML = '<span class="draw-badge">同点</span>';
+        if (pkSelect) {
+          pkSelect.style.display = '';
+          const nameA = match.teamA.name || 'チームA';
+          const nameB = match.teamB.name || 'チームB';
+          if (pkBtnA) pkBtnA.textContent = `${nameA} 勝利`;
+          if (pkBtnB) pkBtnB.textContent = `${nameB} 勝利`;
+          // 既にPK勝者が選択されていれば反映
+          const pkWinner = match.pkWinner;
+          if (pkBtnA) pkBtnA.style.background = pkWinner === 'a' ? 'var(--mint)' : 'white';
+          if (pkBtnA) pkBtnA.style.color = pkWinner === 'a' ? 'white' : '';
+          if (pkBtnB) pkBtnB.style.background = pkWinner === 'b' ? 'var(--mint)' : 'white';
+          if (pkBtnB) pkBtnB.style.color = pkWinner === 'b' ? 'white' : '';
+        }
+      }
     }
   }
   // 決勝は勝敗表示なし（総当たりのため）
+}
+
+// PK戦勝者を選択
+function setPKWinner(side) {
+  const match = currentMatch();
+  match.pkWinner = side;
+  // ボタンの見た目を更新
+  const btnA = document.getElementById('pk-btn-a');
+  const btnB = document.getElementById('pk-btn-b');
+  if (btnA) { btnA.style.background = side === 'a' ? 'var(--mint)' : 'white'; btnA.style.color = side === 'a' ? 'white' : ''; }
+  if (btnB) { btnB.style.background = side === 'b' ? 'var(--mint)' : 'white'; btnB.style.color = side === 'b' ? 'white' : ''; }
 }
 
 // =====================================================
@@ -1186,9 +1238,30 @@ function saveMatch() {
   const totA = match.teamA.members.reduce((s, m) => s + m.score, 0);
   const totB = match.teamB.members.reduce((s, m) => s + m.score, 0);
   if (!isFinal) {
-    match.winner = totA > totB ? 'a' : totB > totA ? 'b' : 'draw';
+    if (totA > totB) {
+      match.winner = 'a';
+    } else if (totB > totA) {
+      match.winner = 'b';
+    } else {
+      // 同点 → 最高得点で比較
+      const bestA = Math.max(...match.teamA.members.map(m => m.score));
+      const bestB = Math.max(...match.teamB.members.map(m => m.score));
+      if (bestA > bestB) {
+        match.winner = 'a';
+      } else if (bestB > bestA) {
+        match.winner = 'b';
+      } else {
+        // 最高得点も同点 → PKが選択されていれば採用、なければ保存不可
+        if (match.pkWinner) {
+          match.winner = match.pkWinner;
+        } else {
+          alert('同点かつ最高得点も同点です。PK戦の勝者を選択してから記録してください。');
+          return;
+        }
+      }
+    }
   } else {
-    match.winner = null; // 決勝は総当たりなので勝敗なし
+    match.winner = null;
   }
   const wasEdited = match.saved;
   match.saved = true;
