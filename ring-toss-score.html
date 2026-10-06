@@ -978,19 +978,19 @@ function renderMembers(team, members) {
     const isSel = idx === appState.selectedMember[team];
     row.className = 'member-row' + (isSel ? ' selected' : '');
     row.id = `member-row-${team}-${idx}`;
+    const bingoLabel = m.bingoCount > 0 ? ` / ビンゴ${m.bingoCount}` : '';
+    const scoreText = `${m.score}${bingoLabel}`;
     row.innerHTML = `
       <input class="member-name-input" placeholder="メンバー${idx+1}の名前"
         value="${m.name}" oninput="updateMemberName('${team}',${idx},this.value)">
       <div class="member-score-ctrl">
         <button class="score-btn" onclick="event.stopPropagation();changeScore('${team}',${idx},-10)" title="−10">－</button>
-        <span class="score-val${m.score>0?' nonzero':''}" id="score-${team}-${idx}">${m.score}</span>
+        <span class="score-val${m.score>0?' nonzero':''}" id="score-${team}-${idx}">${scoreText}</span>
       </div>
     `;
-    // 行タップで選択
     row.addEventListener('click', () => selectMember(team, idx));
     container.appendChild(row);
   });
-  // コーンパネルが開いていれば対象ラベルも更新
   updateConeTargetLabel(team);
 }
 
@@ -1115,11 +1115,12 @@ function toggleConePanel(team) {
 
 function applyConesToMember(team) {
   const score = calcConeScore(team);
+  const bingoCount = Object.values(appState.bingoActive[team]).filter(v => v).length;
   const match = currentMatch();
   const members = match[`team${team.toUpperCase()}`].members;
-  // 選択中メンバーに反映
   const idx = appState.selectedMember[team];
   members[idx].score = score;
+  members[idx].bingoCount = bingoCount;
   // 次のメンバーを自動選択（末尾なら維持）
   if (idx < 2) {
     appState.selectedMember[team] = idx + 1;
@@ -1181,8 +1182,8 @@ function updateResult() {
     } else if (totB > totA) {
       boxB.classList.add('winner'); boxA.classList.add('loser');
       document.getElementById('result-b-badge').innerHTML = '<span class="win-badge">勝利</span>';
-    } else if (totA > 0) {
-      // 同点 → 最高得点で比較
+    } else if (totA === totB) {
+      // 同点（0点同士も含む）→ 最高得点で比較
       const bestA = Math.max(...match.teamA.members.map(m => m.score));
       const bestB = Math.max(...match.teamB.members.map(m => m.score));
       if (bestA > bestB) {
