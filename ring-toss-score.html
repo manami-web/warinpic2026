@@ -516,9 +516,102 @@ body {
 .mvp-score { font-size: 1.05rem; font-weight: 700; color: var(--text); }
 .mvp-games { font-size: 0.65rem; color: #9ca3af; }
 .empty-msg { color: #9ca3af; font-size: 0.82rem; text-align: center; padding: 24px; }
+
+/* ===== パスワード画面 ===== */
+#pw-screen {
+  position: fixed; inset: 0; background: #1e293b;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 9999;
+}
+#pw-box {
+  background: white; border-radius: 14px; padding: 32px 28px;
+  width: 320px; text-align: center;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+}
+#pw-box h2 { font-size: 1.1rem; font-weight: 700; margin-bottom: 4px; color: var(--text); }
+#pw-box p  { font-size: 0.78rem; color: var(--muted); margin-bottom: 18px; }
+#pw-input  {
+  width: 100%; padding: 10px 14px; border: 1.5px solid var(--input-border);
+  border-radius: 8px; font-size: 1rem; outline: none; text-align: center;
+  letter-spacing: 0.12em; margin-bottom: 12px;
+}
+#pw-input:focus { border-color: var(--blue); }
+#pw-error { font-size: 0.75rem; color: var(--red); margin-bottom: 8px; min-height: 18px; }
+#pw-btn {
+  width: 100%; padding: 11px; background: var(--pink); color: white;
+  border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 700;
+  cursor: pointer;
+}
+
+/* ===== トーナメント（モニター表示用） ===== */
+.bracket-monitor {
+  display: flex; gap: 0; padding: 12px 8px;
+  min-width: 100%; height: calc(100vh - 120px);
+  align-items: stretch;
+}
+.bracket-col-monitor {
+  display: flex; flex-direction: column; flex: 1;
+  border-right: 2px dashed #e5e7eb; padding: 0 10px;
+}
+.bracket-col-monitor:last-child { border-right: none; }
+.bracket-col-label-monitor {
+  text-align: center; font-size: 0.85rem; font-weight: 700;
+  color: var(--muted); padding: 4px 0 10px;
+  letter-spacing: 0.06em;
+}
+.bracket-slots-monitor {
+  display: flex; flex-direction: column;
+  justify-content: space-around; flex: 1; gap: 6px;
+}
+.bracket-match-monitor {
+  border-radius: 8px; overflow: hidden;
+  border: 1.5px solid var(--border); background: white;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.bracket-match-head-monitor {
+  font-size: 0.68rem; padding: 3px 8px; font-weight: 700;
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+.bracket-team-monitor {
+  padding: 6px 10px; font-size: 0.9rem; font-weight: 600;
+  color: var(--text2); display: flex;
+  justify-content: space-between; align-items: center;
+  border-bottom: 1px solid #f3f4f6;
+}
+.bracket-team-monitor:last-child { border-bottom: none; }
+.bracket-team-monitor.winner-m { background: white; color: var(--text); font-weight: 700; }
+.bracket-team-monitor.loser-m  { background: #f3f4f6; color: #9ca3af; }
+.bracket-team-monitor.tbd-m    { color: #9ca3af; font-style: italic; }
+.bracket-score-monitor { font-weight: 700; font-size: 1rem; }
+
+/* 決勝エリア枠 */
+.final-wrap-monitor {
+  border: 2.5px solid var(--purple); border-radius: 10px;
+  padding: 8px 6px 10px; position: relative;
+  background: var(--purple2);
+}
+.final-label-monitor {
+  position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
+  background: var(--purple); color: white;
+  font-size: 0.7rem; font-weight: 700; padding: 2px 10px; border-radius: 10px;
+  white-space: nowrap;
+}
 </style>
 </head>
 <body>
+
+<!-- ③パスワード画面 -->
+<div id="pw-screen">
+  <div id="pw-box">
+    <h2>輪リンピック 2026</h2>
+    <p>運営用パスワードを入力してください</p>
+    <input id="pw-input" type="password" placeholder="パスワード"
+      onkeydown="if(event.key==='Enter')checkPW()">
+    <div id="pw-error"></div>
+    <button id="pw-btn" onclick="checkPW()">入力</button>
+  </div>
+</div>
 
 <div id="sync-bar" class="sync-bar offline">○ 接続中...</div>
 <div class="app-header">
@@ -675,9 +768,8 @@ body {
 
 <!-- ========== トーナメントタブ ========== -->
 <div class="tab-content" id="tab-bracket">
-  <div class="section-title">トーナメント表</div>
-  <div class="bracket-wrap">
-    <div class="bracket" id="bracket"></div>
+  <div class="bracket-wrap" style="overflow-x:auto">
+    <div class="bracket-monitor" id="bracket"></div>
   </div>
 </div>
 
@@ -968,6 +1060,7 @@ function onTeamSelect(team, val) {
     renderMembers(team, match[teamKey].members);
     updateResult();
   }
+  saveStorage(); // ①チーム選択を即保存
 }
 
 function renderMembers(team, members) {
@@ -1298,75 +1391,86 @@ function propagateWinner(ri, mi, match) {
 }
 
 // =====================================================
-// トーナメント表
+// トーナメント表（モニター表示用）
 // =====================================================
 function renderBracket() {
   const bracket = document.getElementById('bracket');
   bracket.innerHTML = '';
+
   appState.rounds.forEach((round, ri) => {
     const col = document.createElement('div');
-    col.className = 'bracket-round';
-    col.innerHTML = `<div class="bracket-round-label">${round.label}</div>`;
-    const slots = document.createElement('div');
-    slots.className = 'bracket-slots';
-    round.matches.forEach((m, mi) => {
-      const sch        = SCHEDULE_MAP[`${ri}-${mi}`];
-      const venueColor = sch?.venue === 'A' ? 'var(--mint)' : sch?.venue === 'B' ? 'var(--yellow)' : 'var(--muted)';
-      const venueLabel = sch?.venue ? `会場${sch.venue}` : '';
-      const headerBg   = sch?.venue === 'A' ? 'var(--mint2)' : sch?.venue === 'B' ? 'var(--yellow2)' : '#f9fafb';
-      const header = `
-        <div style="font-size:0.6rem;padding:3px 8px;background:${headerBg};border-bottom:1px solid var(--border);font-weight:700;display:flex;justify-content:space-between;align-items:center">
-          <span style="color:var(--muted)">第${sch?.num || mi+1}試合</span>
-          <span style="display:flex;gap:4px;align-items:center">
-            ${venueLabel ? `<span style="color:${venueColor};font-weight:700">${venueLabel}</span>` : ''}
-            ${sch?.time ? `<span style="color:var(--muted)">${sch.time}</span>` : ''}
-          </span>
-        </div>`;
-      const div = document.createElement('div');
-      div.className = 'bracket-match';
+    col.className = 'bracket-col-monitor';
 
-      if (round.isFinal) {
-        // 決勝：3チーム表示（勝敗なし）
-        const nameA = m.teamA.name || '?';
-        const nameB = m.teamB.name || '?';
-        const nameC = m.teamC?.name || '?';
-        const totA  = m.teamA.members.reduce((s, x) => s + x.score, 0);
-        const totB  = m.teamB.members.reduce((s, x) => s + x.score, 0);
-        const totC  = m.teamC?.members.reduce((s, x) => s + x.score, 0) || 0;
-        div.innerHTML = header + `
-          <div class="bracket-team ${m.teamA.name ? '' : 'tbd'}">
-            <span>${nameA}</span>
-            ${m.saved ? `<span class="bracket-score">${totA}</span>` : ''}
+    const colLabel = document.createElement('div');
+    colLabel.className = 'bracket-col-label-monitor';
+    colLabel.textContent = round.label;
+    col.appendChild(colLabel);
+
+    const slots = document.createElement('div');
+    slots.className = 'bracket-slots-monitor';
+
+    if (round.isFinal) {
+      // 決勝は枠で囲む
+      const finalWrap = document.createElement('div');
+      finalWrap.className = 'final-wrap-monitor';
+      const finalLabel = document.createElement('div');
+      finalLabel.className = 'final-label-monitor';
+      finalLabel.textContent = '決勝 総当たり戦';
+      finalWrap.appendChild(finalLabel);
+
+      round.matches.forEach((m, mi) => {
+        const sch = SCHEDULE_MAP[`${ri}-${mi}`];
+        const venueColor = sch?.venue === 'A' ? 'var(--mint)' : sch?.venue === 'B' ? 'var(--yellow)' : 'var(--muted)';
+        const headerBg   = sch?.venue === 'A' ? 'var(--mint2)' : sch?.venue === 'B' ? 'var(--yellow2)' : '#f9fafb';
+        const div = document.createElement('div');
+        div.className = 'bracket-match-monitor';
+        div.style.marginBottom = '6px';
+        const nameA = m.teamA.name || '未定'; const nameB = m.teamB.name || '未定'; const nameC = m.teamC?.name || '未定';
+        const totA = m.teamA.members.reduce((s,x)=>s+x.score,0);
+        const totB = m.teamB.members.reduce((s,x)=>s+x.score,0);
+        const totC = m.teamC?.members.reduce((s,x)=>s+x.score,0)||0;
+        div.innerHTML = `
+          <div class="bracket-match-head-monitor" style="background:${headerBg}">
+            <span style="color:var(--muted)">第${sch?.num||mi+1}試合</span>
+            <span style="display:flex;gap:4px">
+              ${sch?.venue ? `<span style="color:${venueColor};font-weight:700">会場${sch.venue}</span>` : ''}
+              ${sch?.time ? `<span style="color:var(--muted)">${sch.time}</span>` : ''}
+            </span>
           </div>
-          <div class="bracket-team ${m.teamB.name ? '' : 'tbd'}">
-            <span>${nameB}</span>
-            ${m.saved ? `<span class="bracket-score">${totB}</span>` : ''}
-          </div>
-          <div class="bracket-team ${m.teamC?.name ? '' : 'tbd'}">
-            <span>${nameC}</span>
-            ${m.saved ? `<span class="bracket-score">${totC}</span>` : ''}
-          </div>
+          <div class="bracket-team-monitor ${m.teamA.name?'':'tbd-m'}"><span>${nameA}</span>${m.saved?`<span class="bracket-score-monitor">${totA}</span>`:''}</div>
+          <div class="bracket-team-monitor ${m.teamB.name?'':'tbd-m'}"><span>${nameB}</span>${m.saved?`<span class="bracket-score-monitor">${totB}</span>`:''}</div>
+          <div class="bracket-team-monitor ${m.teamC?.name?'':'tbd-m'}"><span>${nameC}</span>${m.saved?`<span class="bracket-score-monitor">${totC}</span>`:''}</div>
         `;
-      } else {
-        const nameA = m.teamA.name || '?';
-        const nameB = m.teamB.name || '?';
-        const totA  = m.teamA.members.reduce((s, x) => s + x.score, 0);
-        const totB  = m.teamB.members.reduce((s, x) => s + x.score, 0);
-        const clsA  = !m.saved ? (m.teamA.name ? '' : 'tbd') : m.winner === 'a' ? 'winner' : m.winner === 'b' ? 'loser' : '';
-        const clsB  = !m.saved ? (m.teamB.name ? '' : 'tbd') : m.winner === 'b' ? 'winner' : m.winner === 'a' ? 'loser' : '';
-        div.innerHTML = header + `
-          <div class="bracket-team ${clsA}">
-            <span>${nameA}</span>
-            ${m.saved ? `<span class="bracket-score">${totA}</span>` : ''}
+        finalWrap.appendChild(div);
+      });
+      slots.appendChild(finalWrap);
+    } else {
+      round.matches.forEach((m, mi) => {
+        const sch = SCHEDULE_MAP[`${ri}-${mi}`];
+        const venueColor = sch?.venue === 'A' ? 'var(--mint)' : sch?.venue === 'B' ? 'var(--yellow)' : 'var(--muted)';
+        const headerBg   = sch?.venue === 'A' ? 'var(--mint2)' : sch?.venue === 'B' ? 'var(--yellow2)' : '#f9fafb';
+        const nameA = m.teamA.name || '未定'; const nameB = m.teamB.name || '未定';
+        const totA = m.teamA.members.reduce((s,x)=>s+x.score,0);
+        const totB = m.teamB.members.reduce((s,x)=>s+x.score,0);
+        const clsA = !m.saved ? (m.teamA.name?'':'tbd-m') : m.winner==='a'?'winner-m':m.winner==='b'?'loser-m':'';
+        const clsB = !m.saved ? (m.teamB.name?'':'tbd-m') : m.winner==='b'?'winner-m':m.winner==='a'?'loser-m':'';
+        const div = document.createElement('div');
+        div.className = 'bracket-match-monitor';
+        div.innerHTML = `
+          <div class="bracket-match-head-monitor" style="background:${headerBg}">
+            <span style="color:var(--muted)">第${sch?.num||mi+1}試合</span>
+            <span style="display:flex;gap:4px">
+              ${sch?.venue ? `<span style="color:${venueColor};font-weight:700">会場${sch.venue}</span>` : ''}
+              ${sch?.time ? `<span style="color:var(--muted)">${sch.time}</span>` : ''}
+            </span>
           </div>
-          <div class="bracket-team ${clsB}">
-            <span>${nameB}</span>
-            ${m.saved ? `<span class="bracket-score">${totB}</span>` : ''}
-          </div>
+          <div class="bracket-team-monitor ${clsA}"><span>${nameA}</span>${m.saved?`<span class="bracket-score-monitor">${totA}</span>`:''}</div>
+          <div class="bracket-team-monitor ${clsB}"><span>${nameB}</span>${m.saved?`<span class="bracket-score-monitor">${totB}</span>`:''}</div>
         `;
-      }
-      slots.appendChild(div);
-    });
+        slots.appendChild(div);
+      });
+    }
+
     col.appendChild(slots);
     bracket.appendChild(col);
   });
@@ -1540,8 +1644,29 @@ function esc(str) {
 }
 
 // =====================================================
+// ③パスワード認証
+// =====================================================
+const PW = 'warinpic2026'; // ← パスワードを変更する場合はここを変える
+
+function checkPW() {
+  const input = document.getElementById('pw-input').value;
+  if (input === PW) {
+    document.getElementById('pw-screen').style.display = 'none';
+    sessionStorage.setItem('pw_ok', '1');
+  } else {
+    document.getElementById('pw-error').textContent = 'パスワードが違います';
+    document.getElementById('pw-input').value = '';
+    document.getElementById('pw-input').focus();
+  }
+}
+
+// =====================================================
 // 初期化
 // =====================================================
+// パスワード確認済みならそのまま表示
+if (sessionStorage.getItem('pw_ok') === '1') {
+  document.getElementById('pw-screen').style.display = 'none';
+}
 buildMatchSelector();
 renderMatchForm();
 </script>
