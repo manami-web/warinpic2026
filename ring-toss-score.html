@@ -183,6 +183,7 @@ body {
 /* ===== タブコンテンツ ===== */
 .tab-content { display: none; padding: 16px; max-width: 560px; margin: 0 auto; }
 .tab-content.active { display: block; }
+#tab-bracket { max-width: 100%; padding: 0; margin: 0; overflow-x: hidden; }
 
 /* ===== セクションタイトル ===== */
 .section-title {
@@ -545,13 +546,13 @@ body {
 
 /* ===== トーナメント（モニター表示用） ===== */
 .bracket-monitor {
-  display: flex; gap: 0; padding: 12px 8px;
-  min-width: 100%; height: calc(100vh - 120px);
+  display: flex; gap: 0; padding: 8px 0;
+  width: 100%; height: calc(100vh - 120px);
   align-items: stretch;
 }
 .bracket-col-monitor {
   display: flex; flex-direction: column; flex: 1;
-  border-right: 2px dashed #e5e7eb; padding: 0 10px;
+  border-right: 2px dashed #e5e7eb; padding: 0 6px;
 }
 .bracket-col-monitor:last-child { border-right: none; }
 .bracket-col-label-monitor {
