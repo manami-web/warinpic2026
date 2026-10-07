@@ -546,17 +546,19 @@ body {
 
 /* ===== トーナメント（モニター表示用） ===== */
 .bracket-monitor {
-  display: flex; gap: 0; padding: 8px 0;
+  display: flex; gap: 0; padding: 8px 12px;
   width: 100%; height: calc(100vh - 120px);
-  align-items: stretch;
+  align-items: stretch; justify-content: center;
+  box-sizing: border-box;
 }
 .bracket-col-monitor {
-  display: flex; flex-direction: column; flex: 1;
-  border-right: 2px dashed #e5e7eb; padding: 0 6px;
+  display: flex; flex-direction: column;
+  flex: 0 1 280px; min-width: 180px; max-width: 300px;
+  border-right: 2px dashed #e5e7eb; padding: 0 8px;
 }
 .bracket-col-monitor:last-child { border-right: none; }
 .bracket-col-label-monitor {
-  text-align: center; font-size: 0.85rem; font-weight: 700;
+  text-align: center; font-size: 1rem; font-weight: 700;
   color: var(--muted); padding: 4px 0 10px;
   letter-spacing: 0.06em;
 }
@@ -570,12 +572,12 @@ body {
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
 }
 .bracket-match-head-monitor {
-  font-size: 0.68rem; padding: 3px 8px; font-weight: 700;
+  font-size: 0.8rem; padding: 4px 10px; font-weight: 700;
   display: flex; justify-content: space-between; align-items: center;
   border-bottom: 1px solid var(--border);
 }
 .bracket-team-monitor {
-  padding: 6px 10px; font-size: 0.9rem; font-weight: 600;
+  padding: 8px 12px; font-size: 1.05rem; font-weight: 600;
   color: var(--text2); display: flex;
   justify-content: space-between; align-items: center;
   border-bottom: 1px solid #f3f4f6;
@@ -584,7 +586,7 @@ body {
 .bracket-team-monitor.winner-m { background: white; color: var(--text); font-weight: 700; }
 .bracket-team-monitor.loser-m  { background: #f3f4f6; color: #9ca3af; }
 .bracket-team-monitor.tbd-m    { color: #9ca3af; font-style: italic; }
-.bracket-score-monitor { font-weight: 700; font-size: 1rem; }
+.bracket-score-monitor { font-weight: 700; font-size: 1.15rem; }
 
 /* 決勝エリア枠 */
 .final-wrap-monitor {
