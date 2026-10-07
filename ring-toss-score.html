@@ -799,33 +799,22 @@ const ROUNDS = [
 // 1回戦6試合→2回戦3試合→決勝3試合
 // 2回戦の第9試合・決勝の第10〜12試合はシングル
 const MATCH_SCHEDULE = (() => {
-  const schedule = [];
-  // [ri, mi, venue, isPairFirst]
-  // isPairFirst=true → 次の試合と同時刻（+0）、false → +6分
+  // [ri, mi, venue, time]
   const order = [
-    [0,0,'A',true ],[0,1,'B',false], // 1・2試合 同時
-    [0,2,'A',true ],[0,3,'B',false], // 3・4試合 同時
-    [0,4,'A',true ],[0,5,'B',false], // 5・6試合 同時
-    [1,0,'A',true ],[1,1,'B',false], // 7・8試合 同時
-    [1,2,'A',false],                 // 9試合 単独
-    [2,0,'A',false],                 // 10試合 単独（決勝は全部順番）
-    [2,1,'B',false],                 // 11試合 単独
-    [2,2,'A',false],                 // 12試合 単独
+    [0,0,'A','12:30'], // 第1試合
+    [0,1,'B','12:30'], // 第2試合
+    [0,2,'A','12:37'], // 第3試合
+    [0,3,'B','12:37'], // 第4試合
+    [0,4,'A','12:44'], // 第5試合
+    [0,5,'B','12:44'], // 第6試合
+    [1,0,'A','12:55'], // 第7試合
+    [1,1,'B','12:55'], // 第8試合
+    [1,2,'A','13:02'], // 第9試合
+    [2,0,'A','13:15'], // 第10試合
+    [2,1,'B','13:22'], // 第11試合
+    [2,2,'A','13:29'], // 第12試合
   ];
-  let minutes = 12 * 60 + 30; // 12:30
-  // ラウンド境界のidx: 1回戦→2回戦=idx7(第8試合後)、2回戦→決勝=idx8(第9試合後)
-  const roundBoundary = [7, 8]; // このidxの後は+8分（通常+7分）
-  order.forEach((item, idx) => {
-    const [ri, mi, venue, isPairFirst] = item;
-    const num = idx + 1;
-    const hh = String(Math.floor(minutes / 60)).padStart(2,'0');
-    const mm = String(minutes % 60).padStart(2,'0');
-    schedule.push({ ri, mi, num, venue, time: `${hh}:${mm}` });
-    if (idx + 1 < order.length && !isPairFirst) {
-      minutes += roundBoundary.includes(idx) ? 8 : 7;
-    }
-  });
-  return schedule;
+  return order.map(([ri, mi, venue, time], idx) => ({ ri, mi, num: idx + 1, venue, time }));
 })();
 
 // ri,mi → スケジュール情報を引くマップ
