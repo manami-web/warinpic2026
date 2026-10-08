@@ -638,6 +638,7 @@ body {
   <div class="match-card" id="match-form">
     <div class="match-header">
       <span class="match-title" id="form-title">1回戦 第1試合</span>
+      <span id="final-card-label" style="font-size:0.85rem;color:var(--purple);font-weight:700;margin-left:8px"></span>
     </div>
 
     <!-- チームA -->
@@ -794,6 +795,9 @@ const ROUNDS = [
   { label: '2回戦', matchCount: 3 },
   { label: '決勝',  matchCount: 3, isFinal: true },
 ];
+// 決勝の対戦カード（mi=0:A vs B、mi=1:B vs C、mi=2:C vs A）
+// ※ここで "A/B/C" は決勝進出チームの識別ラベル（teamA/teamBに入力）
+const FINAL_LABELS = ['A vs B', 'B vs C', 'C vs A'];
 
 // 全12試合のスケジュール（12:40開始・6分間隔・2会場）
 // 1回戦6試合→2回戦3試合→決勝3試合
@@ -982,19 +986,23 @@ function renderMatchForm() {
     saveBtn.className = 'btn-primary' + (match.saved ? ' is-edit' : '');
   }
 
-  // 決勝はチームCブロック・結果欄を表示
+  // チームCブロック・結果欄は常に非表示（決勝も2チームvsに統一）
   const cBlock = document.getElementById('team-c-block');
   const cSep = document.getElementById('result-c-sep');
   const cRes = document.getElementById('result-c');
-  if (cBlock) cBlock.style.display = isFinal ? '' : 'none';
-  if (cSep)   cSep.style.display   = isFinal ? '' : 'none';
-  if (cRes)   cRes.style.display   = isFinal ? '' : 'none';
+  if (cBlock) cBlock.style.display = 'none';
+  if (cSep)   cSep.style.display   = 'none';
+  if (cRes)   cRes.style.display   = 'none';
+
+  // 決勝タイトルにカードラベルを追加
+  const finalSubEl = document.getElementById('final-card-label');
+  if (finalSubEl) finalSubEl.textContent = isFinal ? FINAL_LABELS[mi] || '' : '';
 
   // チーム選択ドロップダウンを更新
   updateTeamSelects(isFinal);
 
-  // 選択状態を反映
-  const teams = isFinal ? ['a','b','c'] : ['a','b'];
+  // 選択状態を反映（常にa/bの2チームのみ）
+  const teams = ['a','b'];
   teams.forEach(t => {
     const assignKey = `assign${t.toUpperCase()}`;
     const tidx = match[assignKey] ?? -1;
@@ -1006,12 +1014,9 @@ function renderMatchForm() {
 
   document.getElementById('team-a-name').value = match.teamA.name;
   document.getElementById('team-b-name').value = match.teamB.name;
-  document.getElementById('team-c-name').value = match.teamC?.name || '';
   renderMembers('a', match.teamA.members);
   renderMembers('b', match.teamB.members);
-  if (isFinal) renderMembers('c', match.teamC?.members || [{name:'',score:0},{name:'',score:0},{name:'',score:0}]);
   buildConePanel('a'); buildConePanel('b');
-  if (isFinal) buildConePanel('c');
   updateResult();
 }
 
@@ -1021,7 +1026,7 @@ function updateTeamSelects(isFinal) {
     appState.teams.map((t, i) =>
       t.name ? `<option value="${i}">${esc(t.name)}</option>` : ''
     ).join('');
-  const targets = isFinal ? ['a','b','c'] : ['a','b'];
+  const targets = ['a','b'];
   targets.forEach(t => {
     const sel = document.getElementById(`team-${t}-select`);
     if (!sel) return;
@@ -1320,7 +1325,6 @@ function saveMatch() {
   const match = currentMatch();
   if ((match.assignA ?? -1) < 0) match.teamA.name = document.getElementById('team-a-name').value.trim() || 'チームA';
   if ((match.assignB ?? -1) < 0) match.teamB.name = document.getElementById('team-b-name').value.trim() || 'チームB';
-  if (isFinal && (match.assignC ?? -1) < 0) match.teamC.name = document.getElementById('team-c-name').value.trim() || 'チームC';
   const totA = match.teamA.members.reduce((s, m) => s + m.score, 0);
   const totB = match.teamB.members.reduce((s, m) => s + m.score, 0);
   if (!isFinal) {
@@ -1356,9 +1360,8 @@ function saveMatch() {
   renderMatchForm();
   if (!isFinal) propagateWinner(ri, mi, match);
 
-  const msg = isFinal
-    ? `${match.teamA.name} ${totA}点 / ${match.teamB.name} ${totB}点 / ${match.teamC?.name||'C'} ${match.teamC?.members.reduce((s,m)=>s+m.score,0)||0}点`
-    : `${match.teamA.name} ${totA}点 vs ${match.teamB.name} ${totB}点`;
+  const card = isFinal ? `（${FINAL_LABELS[mi]}）` : '';
+  const msg = `${match.teamA.name} ${totA}点 vs ${match.teamB.name} ${totB}点${card}`;
   alert(wasEdited ? `上書き保存しました\n${msg}` : `記録しました\n${msg}`);
 }
 
@@ -1417,21 +1420,22 @@ function renderBracket() {
         const div = document.createElement('div');
         div.className = 'bracket-match-monitor';
         div.style.marginBottom = '6px';
-        const nameA = m.teamA.name || '未定'; const nameB = m.teamB.name || '未定'; const nameC = m.teamC?.name || '未定';
+        const nameA = m.teamA.name || '未定'; const nameB = m.teamB.name || '未定';
         const totA = m.teamA.members.reduce((s,x)=>s+x.score,0);
         const totB = m.teamB.members.reduce((s,x)=>s+x.score,0);
-        const totC = m.teamC?.members.reduce((s,x)=>s+x.score,0)||0;
+        const clsA = !m.saved ? (m.teamA.name?'':'tbd-m') : '';
+        const clsB = !m.saved ? (m.teamB.name?'':'tbd-m') : '';
+        const cardLbl = FINAL_LABELS[mi] || '';
         div.innerHTML = `
           <div class="bracket-match-head-monitor" style="background:${headerBg}">
-            <span style="color:var(--muted)">第${sch?.num||mi+1}試合</span>
+            <span style="color:var(--muted)">第${sch?.num||mi+1}試合 <span style="font-size:0.75rem;color:var(--purple)">${cardLbl}</span></span>
             <span style="display:flex;gap:4px">
               ${sch?.venue ? `<span style="color:${venueColor};font-weight:700">会場${sch.venue}</span>` : ''}
               ${sch?.time ? `<span style="color:var(--muted)">${sch.time}</span>` : ''}
             </span>
           </div>
-          <div class="bracket-team-monitor ${m.teamA.name?'':'tbd-m'}"><span>${nameA}</span>${m.saved?`<span class="bracket-score-monitor">${totA}</span>`:''}</div>
-          <div class="bracket-team-monitor ${m.teamB.name?'':'tbd-m'}"><span>${nameB}</span>${m.saved?`<span class="bracket-score-monitor">${totB}</span>`:''}</div>
-          <div class="bracket-team-monitor ${m.teamC?.name?'':'tbd-m'}"><span>${nameC}</span>${m.saved?`<span class="bracket-score-monitor">${totC}</span>`:''}</div>
+          <div class="bracket-team-monitor ${clsA}"><span>${nameA}</span>${m.saved?`<span class="bracket-score-monitor">${totA}</span>`:''}</div>
+          <div class="bracket-team-monitor ${clsB}"><span>${nameB}</span>${m.saved?`<span class="bracket-score-monitor">${totB}</span>`:''}</div>
         `;
         finalWrap.appendChild(div);
       });
